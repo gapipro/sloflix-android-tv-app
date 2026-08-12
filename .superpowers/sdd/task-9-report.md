@@ -1,0 +1,11 @@
+# Task 9: Player + progress reporting
+- RED: `PlayerViewModelTest` failed to compile because `PlayerViewModel` did not exist.
+- GREEN: Added 15-second reporting tests, unknown-duration coverage, and final-save deduplication.
+- Added Media3 ExoPlayer playback with resume-position seeking and native controls.
+- Added OkHttp data source request headers when `StreamInfo.headers` is non-empty.
+- Added “Can’t play this title” error overlay with Back.
+- Back/disposal performs a final progress save; player disposal releases ExoPlayer.
+- Navigation now consumes `startPosition` and returns to details.
+- Verification: `./gradlew testDebugUnitTest` passed.
+- Review fix: periodic saves now require playback position to advance by 15 seconds; paused/unchanged playback does not save, while final exit saving remains intact.
+- Review tests: position-advance and unchanged-position interval cases added; focused `PlayerViewModelTest` passed.

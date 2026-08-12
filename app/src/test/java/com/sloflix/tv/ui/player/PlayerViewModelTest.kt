@@ -18,7 +18,7 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlayerViewModelTest {
     @Test
-    fun `saves progress every fifteen seconds when duration is known`() = runTest {
+    fun `saves progress when position advances fifteen seconds`() = runTest {
         val repository = FakePlaybackRepository()
         val viewModel = playerViewModel(repository, StandardTestDispatcher(testScheduler))
         var positionMs = 30_000L
@@ -41,6 +41,26 @@ class PlayerViewModelTest {
             listOf(PlaybackProgress(TitleId, 45_000L, 120_000L)),
             repository.savedProgress,
         )
+        viewModel.saveFinalProgress(positionMs, 120_000L)
+    }
+
+    @Test
+    fun `does not save periodic progress when wall clock advances but position is unchanged`() = runTest {
+        val repository = FakePlaybackRepository()
+        val viewModel = playerViewModel(repository, StandardTestDispatcher(testScheduler))
+        val positionMs = 30_000L
+
+        viewModel.load(TitleId)
+        advanceUntilIdle()
+        viewModel.startProgressReporting(
+            positionMs = { positionMs },
+            durationMs = { 120_000L },
+        )
+
+        advanceTimeBy(15_000)
+        runCurrent()
+
+        assertEquals(emptyList<PlaybackProgress>(), repository.savedProgress)
         viewModel.saveFinalProgress(positionMs, 120_000L)
     }
 

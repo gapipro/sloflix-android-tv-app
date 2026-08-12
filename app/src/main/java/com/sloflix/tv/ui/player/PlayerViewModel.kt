@@ -63,11 +63,14 @@ class PlayerViewModel(
     ) {
         progressJob?.cancel()
         progressJob = viewModelScope.launch(dispatcher) {
+            var lastSavedPositionMs = positionMs()
             while (isActive) {
                 delay(ProgressIntervalMs)
+                val position = positionMs()
                 val duration = durationMs()
-                if (duration > 0) {
-                    saveProgress(positionMs(), duration)
+                if (duration > 0 && position - lastSavedPositionMs >= ProgressIntervalMs) {
+                    saveProgress(position, duration)
+                    lastSavedPositionMs = position
                 }
             }
         }
