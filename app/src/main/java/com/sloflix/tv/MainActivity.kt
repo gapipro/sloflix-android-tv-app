@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import com.sloflix.tv.ui.details.DetailsViewModel
 import com.sloflix.tv.ui.home.HomeViewModel
 import com.sloflix.tv.ui.login.LoginViewModel
 import com.sloflix.tv.ui.nav.SloflixNav
@@ -16,6 +17,9 @@ class MainActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModels {
         (application as SloflixApp).homeViewModelFactory
     }
+    private val detailsViewModel: DetailsViewModel by viewModels {
+        (application as SloflixApp).detailsViewModelFactory
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,6 +28,7 @@ class MainActivity : ComponentActivity() {
                 SloflixNav(
                     loginViewModel = loginViewModel,
                     homeViewModel = homeViewModel,
+                    detailsViewModel = detailsViewModel,
                 )
             }
         }

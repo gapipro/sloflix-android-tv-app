@@ -10,11 +10,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.sloflix.tv.ui.details.DetailsScreen
+import com.sloflix.tv.ui.details.DetailsViewModel
 import com.sloflix.tv.ui.home.HomeScreen
 import com.sloflix.tv.ui.home.HomeViewModel
 import com.sloflix.tv.ui.login.LoginEvent
@@ -26,11 +30,13 @@ import com.sloflix.tv.ui.login.SessionDestination
 private const val LoginRoute = "login"
 private const val HomeRoute = "home"
 private const val DetailsRoute = "details/{id}"
+private const val PlayerRoute = "player/{id}?startPosition={startPosition}"
 
 @Composable
 fun SloflixNav(
     loginViewModel: LoginViewModel,
     homeViewModel: HomeViewModel,
+    detailsViewModel: DetailsViewModel,
     modifier: Modifier = Modifier,
 ) {
     val state by loginViewModel.uiState.collectAsStateWithLifecycle()
@@ -45,6 +51,7 @@ fun SloflixNav(
         SloflixNavContent(
             loginViewModel = loginViewModel,
             homeViewModel = homeViewModel,
+            detailsViewModel = detailsViewModel,
             state = state,
             modifier = modifier,
         )
@@ -55,12 +62,14 @@ fun SloflixNav(
 private fun SloflixNavContent(
     loginViewModel: LoginViewModel,
     homeViewModel: HomeViewModel,
+    detailsViewModel: DetailsViewModel,
     state: LoginUiState,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
     val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
     val homeFilter by homeViewModel.filterState.collectAsStateWithLifecycle()
+    val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(loginViewModel, navController) {
         loginViewModel.events.collect { event ->
             when (event) {
@@ -109,7 +118,32 @@ private fun SloflixNavContent(
             )
         }
         composable(DetailsRoute) { backStackEntry ->
-            DetailsPlaceholder(
+            val titleId = backStackEntry.arguments?.getString("id").orEmpty()
+            LaunchedEffect(detailsViewModel, titleId) {
+                detailsViewModel.load(titleId)
+            }
+            DetailsScreen(
+                state = detailsState,
+                onRetry = detailsViewModel::retry,
+                onPlay = { id, startPositionMs ->
+                    val route = buildString {
+                        append("player/$id")
+                        startPositionMs?.let { append("?startPosition=$it") }
+                    }
+                    navController.navigate(route)
+                },
+            )
+        }
+        composable(
+            route = PlayerRoute,
+            arguments = listOf(
+                navArgument("startPosition") {
+                    type = NavType.LongType
+                    defaultValue = 0L
+                },
+            ),
+        ) { backStackEntry ->
+            PlayerPlaceholder(
                 titleId = backStackEntry.arguments?.getString("id").orEmpty(),
             )
         }
@@ -133,7 +167,7 @@ private fun LoadingScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun DetailsPlaceholder(titleId: String) {
+private fun PlayerPlaceholder(titleId: String) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -141,7 +175,7 @@ private fun DetailsPlaceholder(titleId: String) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Details · $titleId",
+            text = "Player · $titleId",
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White,
         )
