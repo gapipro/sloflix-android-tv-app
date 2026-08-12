@@ -7,6 +7,7 @@ import com.sloflix.tv.domain.model.TitleSummary
 import com.sloflix.tv.domain.repo.CatalogRepository
 import com.sloflix.tv.domain.session.SessionStore
 import com.sloflix.tv.ui.components.UiState
+import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,7 +131,7 @@ class HomeViewModel(
                 mutableUiState.value = UiState.Ready(HomeContent(rows))
             } catch (error: Exception) {
                 mutableUiState.value = UiState.Error(
-                    error.message ?: "Unable to load your library",
+                    error.toUserMessage("Unable to load your library"),
                 )
             } finally {
                 isLoading = false

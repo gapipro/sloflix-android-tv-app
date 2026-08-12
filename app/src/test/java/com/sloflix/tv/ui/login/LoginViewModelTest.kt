@@ -3,6 +3,7 @@ package com.sloflix.tv.ui.login
 import com.sloflix.tv.domain.repo.AuthRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
+import java.net.UnknownHostException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -54,6 +55,26 @@ class LoginViewModelTest {
         advanceUntilIdle()
 
         assertEquals("Invalid username or password", viewModel.uiState.value.errorMessage)
+        assertFalse(viewModel.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `login network failure shows offline message`() = runTest {
+        val viewModel = LoginViewModel(
+            authRepository = FakeAuthRepository(
+                loginResult = Result.failure(UnknownHostException("api.sloflix.com")),
+            ),
+            sessionStore = FakeSessionStore(),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.submit()
+        advanceUntilIdle()
+
+        assertEquals(
+            "You’re offline. Check your connection and try again.",
+            viewModel.uiState.value.errorMessage,
+        )
         assertFalse(viewModel.uiState.value.isLoading)
     }
 

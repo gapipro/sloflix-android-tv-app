@@ -7,6 +7,7 @@ import com.sloflix.tv.domain.repo.CatalogRepository
 import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.SessionStore
 import com.sloflix.tv.ui.components.UiState
+import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,7 +74,7 @@ class DetailsViewModel(
             } catch (error: Exception) {
                 if (this@DetailsViewModel.titleId != titleId) return@launch
                 mutableUiState.value = UiState.Error(
-                    error.message ?: "Unable to load title details",
+                    error.toUserMessage("Unable to load title details"),
                 )
             } finally {
                 if (this@DetailsViewModel.titleId == titleId) {

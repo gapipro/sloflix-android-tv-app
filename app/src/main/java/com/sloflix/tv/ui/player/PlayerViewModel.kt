@@ -7,6 +7,7 @@ import com.sloflix.tv.domain.model.StreamInfo
 import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
+import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -20,7 +21,7 @@ import kotlinx.coroutines.launch
 sealed interface PlayerUiState {
     data object Loading : PlayerUiState
     data class Ready(val streamInfo: StreamInfo) : PlayerUiState
-    data object Error : PlayerUiState
+    data class Error(val message: String) : PlayerUiState
 }
 
 class PlayerViewModel(
@@ -49,9 +50,11 @@ class PlayerViewModel(
                 if (this@PlayerViewModel.titleId != titleId) return@launch
                 session = currentSession
                 mutableUiState.value = PlayerUiState.Ready(streamInfo)
-            } catch (_: Exception) {
+            } catch (error: Exception) {
                 if (this@PlayerViewModel.titleId == titleId) {
-                    mutableUiState.value = PlayerUiState.Error
+                    mutableUiState.value = PlayerUiState.Error(
+                        error.toUserMessage("Can’t play this title"),
+                    )
                 }
             }
         }

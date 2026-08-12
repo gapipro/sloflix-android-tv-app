@@ -11,6 +11,7 @@ import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
 import com.sloflix.tv.ui.components.UiState
+import java.net.UnknownHostException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -78,6 +79,26 @@ class DetailsViewModelTest {
             (state as UiState.Ready).value,
         )
         assertTrue(state.value.canResume)
+    }
+
+    @Test
+    fun `details network failure shows offline message`() = runTest {
+        val viewModel = DetailsViewModel(
+            catalogRepository = FakeCatalogRepository(
+                Result.failure(UnknownHostException("api.sloflix.com")),
+            ),
+            playbackRepository = FakePlaybackRepository(Result.success(null)),
+            sessionStore = FakeSessionStore(Session("token")),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.load("arrival")
+        advanceUntilIdle()
+
+        assertEquals(
+            UiState.Error("You’re offline. Check your connection and try again."),
+            viewModel.uiState.value,
+        )
     }
 
     private fun titleDetails(resumePositionMs: Long? = null) = TitleDetails(

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sloflix.tv.domain.repo.AuthRepository
 import com.sloflix.tv.domain.session.SessionStore
+import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -99,7 +100,7 @@ class LoginViewModel(
                     mutableUiState.update {
                         it.copy(
                             isLoading = false,
-                            errorMessage = error.message ?: "Unable to sign in",
+                            errorMessage = error.toUserMessage("Unable to sign in"),
                         )
                     }
                 }

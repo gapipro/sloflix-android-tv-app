@@ -5,6 +5,7 @@ import com.sloflix.tv.domain.model.StreamInfo
 import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
+import java.io.IOException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -100,6 +101,22 @@ class PlayerViewModelTest {
         )
     }
 
+    @Test
+    fun `stream network failure shows offline message`() = runTest {
+        val repository = FakePlaybackRepository(
+            streamResult = Result.failure(IOException("connection reset")),
+        )
+        val viewModel = playerViewModel(repository, StandardTestDispatcher(testScheduler))
+
+        viewModel.load(TitleId)
+        advanceUntilIdle()
+
+        assertEquals(
+            PlayerUiState.Error("You’re offline. Check your connection and try again."),
+            viewModel.uiState.value,
+        )
+    }
+
     private fun playerViewModel(
         repository: PlaybackRepository,
         dispatcher: CoroutineDispatcher,
@@ -114,11 +131,15 @@ class PlayerViewModelTest {
     }
 }
 
-private class FakePlaybackRepository : PlaybackRepository {
+private class FakePlaybackRepository(
+    private val streamResult: Result<StreamInfo> = Result.success(
+        StreamInfo("https://example.com/movie.m3u8"),
+    ),
+) : PlaybackRepository {
     val savedProgress = mutableListOf<PlaybackProgress>()
 
     override suspend fun stream(session: Session, titleId: String): Result<StreamInfo> =
-        Result.success(StreamInfo("https://example.com/movie.m3u8"))
+        streamResult
 
     override suspend fun saveProgress(
         session: Session,

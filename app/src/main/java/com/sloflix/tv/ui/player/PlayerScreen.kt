@@ -62,9 +62,9 @@ fun PlayerScreen(
     ) {
         when (val currentState = state) {
             PlayerUiState.Loading -> PlayerLoading()
-            PlayerUiState.Error -> {
+            is PlayerUiState.Error -> {
                 BackHandler(onBack = onBack)
-                PlayerError(onBack)
+                PlayerError(currentState.message, onBack)
             }
             is PlayerUiState.Ready -> PlayerContent(
                 streamInfo = currentState.streamInfo,
@@ -144,7 +144,7 @@ private fun PlayerContent(
     )
 
     if (playbackFailed) {
-        PlayerError(saveAndBack)
+        PlayerError("Can’t play this title", saveAndBack)
     }
 }
 
@@ -163,7 +163,10 @@ private fun PlayerLoading() {
 }
 
 @Composable
-private fun PlayerError(onBack: () -> Unit) {
+private fun PlayerError(
+    message: String,
+    onBack: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -173,7 +176,7 @@ private fun PlayerError(onBack: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "Can’t play this title",
+            text = message,
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White,
         )
