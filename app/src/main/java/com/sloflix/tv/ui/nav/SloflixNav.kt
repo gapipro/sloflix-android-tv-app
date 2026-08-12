@@ -15,6 +15,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.sloflix.tv.ui.home.HomeScreen
+import com.sloflix.tv.ui.home.HomeViewModel
 import com.sloflix.tv.ui.login.LoginEvent
 import com.sloflix.tv.ui.login.LoginScreen
 import com.sloflix.tv.ui.login.LoginUiState
@@ -23,10 +25,12 @@ import com.sloflix.tv.ui.login.SessionDestination
 
 private const val LoginRoute = "login"
 private const val HomeRoute = "home"
+private const val DetailsRoute = "details/{id}"
 
 @Composable
 fun SloflixNav(
     loginViewModel: LoginViewModel,
+    homeViewModel: HomeViewModel,
     modifier: Modifier = Modifier,
 ) {
     val state by loginViewModel.uiState.collectAsStateWithLifecycle()
@@ -40,6 +44,7 @@ fun SloflixNav(
     } else {
         SloflixNavContent(
             loginViewModel = loginViewModel,
+            homeViewModel = homeViewModel,
             state = state,
             modifier = modifier,
         )
@@ -49,10 +54,12 @@ fun SloflixNav(
 @Composable
 private fun SloflixNavContent(
     loginViewModel: LoginViewModel,
+    homeViewModel: HomeViewModel,
     state: LoginUiState,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
+    val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(loginViewModel, navController) {
         loginViewModel.events.collect { event ->
             when (event) {
@@ -82,7 +89,21 @@ private fun SloflixNavContent(
             )
         }
         composable(HomeRoute) {
-            HomePlaceholder()
+            LaunchedEffect(homeViewModel) {
+                homeViewModel.load()
+            }
+            HomeScreen(
+                state = homeState,
+                onRetry = homeViewModel::retry,
+                onTitleClick = { title ->
+                    navController.navigate("details/${title.id}")
+                },
+            )
+        }
+        composable(DetailsRoute) { backStackEntry ->
+            DetailsPlaceholder(
+                titleId = backStackEntry.arguments?.getString("id").orEmpty(),
+            )
         }
     }
 }
@@ -104,7 +125,7 @@ private fun LoadingScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun HomePlaceholder() {
+private fun DetailsPlaceholder(titleId: String) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -112,8 +133,8 @@ private fun HomePlaceholder() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Home",
-            style = MaterialTheme.typography.displayMedium,
+            text = "Details · $titleId",
+            style = MaterialTheme.typography.headlineMedium,
             color = Color.White,
         )
     }
