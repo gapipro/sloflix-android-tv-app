@@ -27,6 +27,9 @@ import com.sloflix.tv.ui.login.LoginScreen
 import com.sloflix.tv.ui.login.LoginUiState
 import com.sloflix.tv.ui.login.LoginViewModel
 import com.sloflix.tv.ui.login.SessionDestination
+import com.sloflix.tv.ui.player.PlayerScreen
+import com.sloflix.tv.ui.player.PlayerViewModel
+import okhttp3.OkHttpClient
 
 private const val LoginRoute = "login"
 private const val HomeRoute = "home"
@@ -38,6 +41,8 @@ fun SloflixNav(
     loginViewModel: LoginViewModel,
     homeViewModel: HomeViewModel,
     detailsViewModel: DetailsViewModel,
+    playerViewModel: PlayerViewModel,
+    okHttpClient: OkHttpClient,
     modifier: Modifier = Modifier,
 ) {
     val state by loginViewModel.uiState.collectAsStateWithLifecycle()
@@ -53,6 +58,8 @@ fun SloflixNav(
             loginViewModel = loginViewModel,
             homeViewModel = homeViewModel,
             detailsViewModel = detailsViewModel,
+            playerViewModel = playerViewModel,
+            okHttpClient = okHttpClient,
             state = state,
             modifier = modifier,
         )
@@ -64,6 +71,8 @@ private fun SloflixNavContent(
     loginViewModel: LoginViewModel,
     homeViewModel: HomeViewModel,
     detailsViewModel: DetailsViewModel,
+    playerViewModel: PlayerViewModel,
+    okHttpClient: OkHttpClient,
     state: LoginUiState,
     modifier: Modifier = Modifier,
 ) {
@@ -149,8 +158,12 @@ private fun SloflixNavContent(
                 },
             ),
         ) { backStackEntry ->
-            PlayerPlaceholder(
+            PlayerScreen(
                 titleId = backStackEntry.arguments?.getString("id").orEmpty(),
+                startPositionMs = backStackEntry.arguments?.getLong("startPosition") ?: 0L,
+                viewModel = playerViewModel,
+                okHttpClient = okHttpClient,
+                onBack = navController::popBackStack,
             )
         }
     }
@@ -172,18 +185,3 @@ private fun LoadingScreen(modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun PlayerPlaceholder(titleId: String) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF090C12)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "Player · $titleId",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White,
-        )
-    }
-}

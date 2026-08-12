@@ -7,6 +7,7 @@ import com.sloflix.tv.di.AppContainer
 import com.sloflix.tv.ui.details.DetailsViewModel
 import com.sloflix.tv.ui.home.HomeViewModel
 import com.sloflix.tv.ui.login.LoginViewModel
+import com.sloflix.tv.ui.player.PlayerViewModel
 
 class SloflixApp : Application() {
     lateinit var container: AppContainer
@@ -45,6 +46,19 @@ class SloflixApp : Application() {
                 require(modelClass.isAssignableFrom(DetailsViewModel::class.java))
                 return DetailsViewModel(
                     catalogRepository = container.catalogRepository,
+                    playbackRepository = container.playbackRepository,
+                    sessionStore = container.sessionStore,
+                ) as T
+            }
+        }
+    }
+
+    val playerViewModelFactory: ViewModelProvider.Factory by lazy {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                require(modelClass.isAssignableFrom(PlayerViewModel::class.java))
+                return PlayerViewModel(
                     playbackRepository = container.playbackRepository,
                     sessionStore = container.sessionStore,
                 ) as T
