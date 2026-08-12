@@ -17,6 +17,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.sloflix.tv.ui.login.LoginEvent
 import com.sloflix.tv.ui.login.LoginScreen
+import com.sloflix.tv.ui.login.LoginUiState
 import com.sloflix.tv.ui.login.LoginViewModel
 import com.sloflix.tv.ui.login.SessionDestination
 
@@ -36,9 +37,21 @@ fun SloflixNav(
 
     if (state.destination == SessionDestination.Checking) {
         LoadingScreen(modifier)
-        return
+    } else {
+        SloflixNavContent(
+            loginViewModel = loginViewModel,
+            state = state,
+            modifier = modifier,
+        )
     }
+}
 
+@Composable
+private fun SloflixNavContent(
+    loginViewModel: LoginViewModel,
+    state: LoginUiState,
+    modifier: Modifier = Modifier,
+) {
     val navController = rememberNavController()
     LaunchedEffect(loginViewModel, navController) {
         loginViewModel.events.collect { event ->
