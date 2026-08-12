@@ -10,6 +10,11 @@ import com.sloflix.tv.ui.components.UiState
 import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +43,7 @@ class HomeViewModel(
     private var isLoading = false
     private var filterOptionsLoaded = false
     private var reloadRequested = false
+    private var queryDebounceJob: Job? = null
 
     fun load() {
         if (isLoading || mutableUiState.value is UiState.Ready) return
@@ -69,8 +75,20 @@ class HomeViewModel(
         updateFilter { it.copy(sortBy = sort, offset = 0) }
     }
 
+    /**
+     * Typing on a TV remote produces a burst of single-character edits, so the catalog reload waits
+     * for the viewer to stop typing while the field itself updates immediately.
+     */
     fun updateQuery(query: String) {
-        updateFilter { it.copy(query = query.trim().ifEmpty { null }, offset = 0) }
+        val updated = mutableFilterState.value
+            .copy(query = query.trim().ifEmpty { null }, offset = 0)
+        if (updated == mutableFilterState.value) return
+        mutableFilterState.value = updated
+        queryDebounceJob?.cancel()
+        queryDebounceJob = viewModelScope.launch(dispatcher) {
+            delay(QueryDebounceMs)
+            requestReload()
+        }
     }
 
     fun clearFilters() {
@@ -90,16 +108,25 @@ class HomeViewModel(
         val updated = transform(mutableFilterState.value)
         if (updated == mutableFilterState.value) return
         mutableFilterState.value = updated
+        queryDebounceJob?.cancel()
+        requestReload()
+    }
+
+    private fun requestReload() {
         if (isLoading) {
             reloadRequested = true
         } else {
-            loadCatalog()
+            loadCatalog(keepCurrentContent = true)
         }
     }
 
-    private fun loadCatalog() {
+    private fun loadCatalog(keepCurrentContent: Boolean = false) {
         isLoading = true
-        mutableUiState.value = UiState.Loading
+        // Refreshing an already populated screen keeps the rows on screen instead of wiping the
+        // whole grid back to a spinner on every filter change.
+        if (!keepCurrentContent || mutableUiState.value !is UiState.Ready) {
+            mutableUiState.value = UiState.Loading
+        }
         viewModelScope.launch(dispatcher) {
             try {
                 val session = checkNotNull(sessionStore.get()) { "Your session has expired" }
@@ -109,13 +136,17 @@ class HomeViewModel(
                 }
                 val filter = mutableFilterState.value
                 val categories = catalogRepository.categories(session).getOrThrow()
-                val categoryRows = categories.map { category ->
-                    val titles = catalogRepository.titles(
-                        session = session,
-                        categoryId = category.id,
-                        filter = filter,
-                    ).getOrThrow()
-                    HomeRow(category.name, titles)
+                val categoryRows = coroutineScope {
+                    categories.map { category ->
+                        async {
+                            val titles = catalogRepository.titles(
+                                session = session,
+                                categoryId = category.id,
+                                filter = filter,
+                            ).getOrThrow()
+                            HomeRow(category.name, titles)
+                        }
+                    }.awaitAll()
                 }
                 val continueWatching = if (filter.hasActiveFilters()) {
                     emptyList()
@@ -137,10 +168,14 @@ class HomeViewModel(
                 isLoading = false
                 if (reloadRequested) {
                     reloadRequested = false
-                    loadCatalog()
+                    loadCatalog(keepCurrentContent = true)
                 }
             }
         }
+    }
+
+    private companion object {
+        const val QueryDebounceMs = 400L
     }
 }
 

@@ -7,11 +7,14 @@ import com.sloflix.tv.domain.model.TitleSummary
 import com.sloflix.tv.domain.repo.CatalogRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
+import com.sloflix.tv.ui.components.UiState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -33,6 +36,48 @@ class HomeViewModelFilterTest {
         assertEquals(setOf("drama"), viewModel.filterState.value.selectedGenreIds)
         assertEquals(setOf("drama"), repository.receivedFilters.last().selectedGenreIds)
         assertEquals(2, repository.receivedFilters.size)
+    }
+
+    @Test
+    fun `rapid query edits trigger a single debounced reload`() = runTest {
+        val repository = FilterCatalogRepository()
+        val viewModel = HomeViewModel(
+            catalogRepository = repository,
+            sessionStore = FilterSessionStore(Session("token")),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.load()
+        advanceUntilIdle()
+        viewModel.updateQuery("a")
+        advanceTimeBy(150)
+        viewModel.updateQuery("ar")
+        advanceTimeBy(150)
+        viewModel.updateQuery("arr")
+        advanceUntilIdle()
+
+        assertEquals("arr", viewModel.filterState.value.query)
+        assertEquals(2, repository.receivedFilters.size)
+        assertEquals("arr", repository.receivedFilters.last().query)
+    }
+
+    @Test
+    fun `filter change keeps the loaded rows on screen while refreshing`() = runTest {
+        val repository = FilterCatalogRepository()
+        val viewModel = HomeViewModel(
+            catalogRepository = repository,
+            sessionStore = FilterSessionStore(Session("token")),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.load()
+        advanceUntilIdle()
+        val loaded = viewModel.uiState.value
+        viewModel.toggleGenre("drama")
+
+        assertEquals(loaded, viewModel.uiState.value)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value is UiState.Ready)
     }
 }
 

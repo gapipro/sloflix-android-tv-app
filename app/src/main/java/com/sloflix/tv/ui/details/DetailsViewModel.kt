@@ -56,19 +56,20 @@ class DetailsViewModel(
             try {
                 val session = checkNotNull(sessionStore.get()) { "Your session has expired" }
                 val title = catalogRepository.details(session, titleId).getOrThrow()
-                val savedPosition = playbackRepository
-                    .loadProgress(session, titleId)
-                    .getOrThrow()
-                    ?.positionMs
-                    ?.takeIf { it > 0 }
-                val resumePosition = savedPosition
-                    ?: title.resumePositionMs?.takeIf { it > 0 }
+                // Details already carries `watch_time`; loading progress hits the very same endpoint,
+                // so it is only worth a request when details reported no watch time at all.
+                val resumePosition = title.resumePositionMs
+                    ?: playbackRepository
+                        .loadProgress(session, titleId)
+                        .getOrThrow()
+                        ?.positionMs
                     ?: 0L
+                val startPosition = resumePosition.coerceAtLeast(0L)
                 if (this@DetailsViewModel.titleId != titleId) return@launch
                 mutableUiState.value = UiState.Ready(
                     DetailsContent(
                         title = title,
-                        resumePositionMs = resumePosition,
+                        resumePositionMs = startPosition,
                     ),
                 )
             } catch (error: Exception) {

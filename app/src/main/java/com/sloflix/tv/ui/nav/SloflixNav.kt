@@ -42,7 +42,7 @@ fun SloflixNav(
     homeViewModel: HomeViewModel,
     detailsViewModel: DetailsViewModel,
     playerViewModel: PlayerViewModel,
-    okHttpClient: OkHttpClient,
+    mediaOkHttpClient: OkHttpClient,
     modifier: Modifier = Modifier,
 ) {
     val state by loginViewModel.uiState.collectAsStateWithLifecycle()
@@ -59,7 +59,7 @@ fun SloflixNav(
             homeViewModel = homeViewModel,
             detailsViewModel = detailsViewModel,
             playerViewModel = playerViewModel,
-            okHttpClient = okHttpClient,
+            mediaOkHttpClient = mediaOkHttpClient,
             state = state,
             modifier = modifier,
         )
@@ -72,7 +72,7 @@ private fun SloflixNavContent(
     homeViewModel: HomeViewModel,
     detailsViewModel: DetailsViewModel,
     playerViewModel: PlayerViewModel,
-    okHttpClient: OkHttpClient,
+    mediaOkHttpClient: OkHttpClient,
     state: LoginUiState,
     modifier: Modifier = Modifier,
 ) {
@@ -162,7 +162,7 @@ private fun SloflixNavContent(
                 titleId = backStackEntry.arguments?.getString("id").orEmpty(),
                 startPositionMs = backStackEntry.arguments?.getLong("startPosition") ?: 0L,
                 viewModel = playerViewModel,
-                okHttpClient = okHttpClient,
+                mediaOkHttpClient = mediaOkHttpClient,
                 onBack = navController::popBackStack,
             )
         }

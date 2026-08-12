@@ -16,9 +16,12 @@ class PlaybackRepositoryImpl(
         runCatching {
             sessionProvider.update(session)
             val details = api.details(titleId).successfulData()
-            val source = details.sources.firstOrNull()
-                ?: error("No playback source is available")
-            StreamInfo(source.url)
+            val candidates = StreamSourceResolver.candidates(details.sources)
+            check(candidates.isNotEmpty()) { "No playback source is available" }
+            StreamInfo(
+                url = candidates.first(),
+                fallbackUrls = candidates.drop(1),
+            )
         }
 
     override suspend fun saveProgress(

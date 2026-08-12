@@ -58,8 +58,11 @@ dependencies {
     implementation(libs.datastore.preferences)
 
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.exoplayer.dash)
     implementation(libs.media3.ui)
     implementation(libs.media3.okhttp)
+    implementation(libs.coil.compose)
     implementation(libs.coroutines.android)
 
     testImplementation(libs.junit)

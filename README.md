@@ -31,6 +31,8 @@ store account credentials in this repository.
 - [ ] App appears in the Android TV launcher.
 - [ ] Login success and failure messages are clear.
 - [ ] Killing and relaunching the app keeps the user signed in.
+- [ ] Relaunching with the network unplugged still lands on Home, not Login.
+- [ ] Back closes the filter panel instead of leaving the app.
 - [ ] Categories scroll correctly with the D-pad.
 - [ ] Filters change the displayed results.
 - [ ] Opening details and selecting Play starts playback.

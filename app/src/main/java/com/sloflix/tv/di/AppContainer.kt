@@ -3,8 +3,11 @@ package com.sloflix.tv.di
 import android.content.Context
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.sloflix.tv.data.api.AuthInterceptor
+import com.sloflix.tv.data.api.CloudflareChallengeInterceptor
 import com.sloflix.tv.data.api.MutableSessionProvider
 import com.sloflix.tv.data.api.SloflixApi
+import com.sloflix.tv.data.api.UserAgentInterceptor
+import com.sloflix.tv.data.net.AndroidNetworkStatus
 import com.sloflix.tv.data.repo.AuthRepositoryImpl
 import com.sloflix.tv.data.repo.CatalogRepositoryImpl
 import com.sloflix.tv.data.repo.PlaybackRepositoryImpl
@@ -30,12 +33,27 @@ class AppContainer(
     private val sessionProvider = MutableSessionProvider()
 
     val sessionStore: SessionStore = DataStoreSessionStore(context.applicationContext)
-    val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+
+    /** Sloflix API only: this is the one client allowed to attach the bearer token and cookies. */
+    val apiOkHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(UserAgentInterceptor())
         .addInterceptor(AuthInterceptor(sessionProvider))
+        .addInterceptor(CloudflareChallengeInterceptor())
         .build()
+
+    /**
+     * Media and image downloads go to third-party CDNs, so they must never carry Sloflix
+     * credentials. Sharing the connection pool keeps the extra client cheap.
+     */
+    val mediaOkHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectionPool(apiOkHttpClient.connectionPool)
+        .dispatcher(apiOkHttpClient.dispatcher)
+        .addInterceptor(UserAgentInterceptor())
+        .build()
+
     val retrofit: Retrofit = Retrofit.Builder()
         .baseUrl(baseUrl)
-        .client(okHttpClient)
+        .client(apiOkHttpClient)
         .addConverterFactory(
             networkJson.asConverterFactory("application/json".toMediaType()),
         )
@@ -43,7 +61,11 @@ class AppContainer(
 
     private val api = retrofit.create(SloflixApi::class.java)
 
-    val authRepository: AuthRepository = AuthRepositoryImpl(api, sessionProvider)
+    val authRepository: AuthRepository = AuthRepositoryImpl(
+        api = api,
+        sessionProvider = sessionProvider,
+        networkStatus = AndroidNetworkStatus(context.applicationContext),
+    )
     val catalogRepository: CatalogRepository = CatalogRepositoryImpl(api, sessionProvider)
     val playbackRepository: PlaybackRepository = PlaybackRepositoryImpl(api, sessionProvider)
 

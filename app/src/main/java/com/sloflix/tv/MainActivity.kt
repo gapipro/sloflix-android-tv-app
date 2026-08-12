@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
                     homeViewModel = homeViewModel,
                     detailsViewModel = detailsViewModel,
                     playerViewModel = playerViewModel,
-                    okHttpClient = (application as SloflixApp).container.okHttpClient,
+                    mediaOkHttpClient = (application as SloflixApp).container.mediaOkHttpClient,
                 )
             }
         }

@@ -81,6 +81,9 @@ class PlayerViewModel(
 
     fun saveFinalProgress(positionMs: Long, durationMs: Long) {
         progressJob?.cancel()
+        // A player that never reached a known duration played nothing, and saving a zero position
+        // there would wipe an existing resume point (e.g. when a source is swapped out).
+        if (positionMs <= 0 || durationMs <= 0) return
         val progress = createProgress(positionMs, durationMs) ?: return
         if (progress == finalProgress) return
         finalProgress = progress

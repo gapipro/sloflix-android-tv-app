@@ -26,9 +26,10 @@ class DetailsViewModelTest {
     fun `ready state shows resume CTA when catalog resume position is greater than zero`() =
         runTest {
             val title = titleDetails(resumePositionMs = 120_000)
+            val playbackRepository = FakePlaybackRepository(Result.success(null))
             val viewModel = DetailsViewModel(
                 catalogRepository = FakeCatalogRepository(Result.success(title)),
-                playbackRepository = FakePlaybackRepository(Result.success(null)),
+                playbackRepository = playbackRepository,
                 sessionStore = FakeSessionStore(Session("token")),
                 dispatcher = StandardTestDispatcher(testScheduler),
             )
@@ -46,6 +47,7 @@ class DetailsViewModelTest {
                 (state as UiState.Ready).value,
             )
             assertTrue(state.value.canResume)
+            assertEquals(0, playbackRepository.loadProgressCalls)
         }
 
     @Test
@@ -136,10 +138,15 @@ private class FakeCatalogRepository(
 private class FakePlaybackRepository(
     private val progressResult: Result<PlaybackProgress?>,
 ) : PlaybackRepository {
+    var loadProgressCalls = 0
+
     override suspend fun loadProgress(
         session: Session,
         titleId: String,
-    ): Result<PlaybackProgress?> = progressResult
+    ): Result<PlaybackProgress?> {
+        loadProgressCalls += 1
+        return progressResult
+    }
 
     override suspend fun stream(session: Session, titleId: String): Result<StreamInfo> =
         error("Not used")

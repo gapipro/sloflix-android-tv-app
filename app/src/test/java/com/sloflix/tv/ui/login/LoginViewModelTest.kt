@@ -1,6 +1,7 @@
 package com.sloflix.tv.ui.login
 
 import com.sloflix.tv.domain.repo.AuthRepository
+import com.sloflix.tv.domain.repo.SessionValidity
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
 import java.net.UnknownHostException
@@ -81,7 +82,7 @@ class LoginViewModelTest {
     @Test
     fun `valid stored session selects home`() = runTest {
         val session = Session(accessToken = "stored-fake-token")
-        val authRepository = FakeAuthRepository(isSessionValid = true)
+        val authRepository = FakeAuthRepository(validity = SessionValidity.Valid)
         val viewModel = LoginViewModel(
             authRepository = authRepository,
             sessionStore = FakeSessionStore(storedSession = session),
@@ -101,7 +102,7 @@ class LoginViewModelTest {
             storedSession = Session(accessToken = "expired-fake-token"),
         )
         val viewModel = LoginViewModel(
-            authRepository = FakeAuthRepository(isSessionValid = false),
+            authRepository = FakeAuthRepository(validity = SessionValidity.Invalid),
             sessionStore = sessionStore,
             dispatcher = StandardTestDispatcher(testScheduler),
         )
@@ -114,21 +115,40 @@ class LoginViewModelTest {
         assertEquals(1, sessionStore.clearCount)
         assertNull(sessionStore.storedSession)
     }
+
+    @Test
+    fun `unverifiable session goes home and keeps the stored session`() = runTest {
+        val session = Session(accessToken = "stored-fake-token")
+        val sessionStore = FakeSessionStore(storedSession = session)
+        val viewModel = LoginViewModel(
+            authRepository = FakeAuthRepository(validity = SessionValidity.Unverified),
+            sessionStore = sessionStore,
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.restoreSession()
+        advanceUntilIdle()
+
+        assertEquals(SessionDestination.Home, viewModel.uiState.value.destination)
+        assertNull(viewModel.uiState.value.errorMessage)
+        assertEquals(0, sessionStore.clearCount)
+        assertEquals(session, sessionStore.storedSession)
+    }
 }
 
 private class FakeAuthRepository(
     private val loginResult: Result<Session> = Result.failure(
         IllegalStateException("Login was not configured for this test"),
     ),
-    private val isSessionValid: Boolean = false,
+    private val validity: SessionValidity = SessionValidity.Invalid,
 ) : AuthRepository {
     var validatedSession: Session? = null
 
     override suspend fun login(username: String, password: String): Result<Session> = loginResult
 
-    override suspend fun validateSession(session: Session): Boolean {
+    override suspend fun validateSession(session: Session): SessionValidity {
         validatedSession = session
-        return isSessionValid
+        return validity
     }
 }
 

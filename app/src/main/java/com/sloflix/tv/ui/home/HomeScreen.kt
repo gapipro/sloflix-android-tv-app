@@ -1,5 +1,6 @@
 package com.sloflix.tv.ui.home
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +68,7 @@ fun HomeScreen(
             is UiState.Ready -> CatalogContent(
                 content = state.value,
                 filter = filter,
+                filtersOpen = filtersOpen,
                 onOpenFilters = { filtersOpen = true },
                 onClearFilters = onClearFilters,
                 onTitleClick = onTitleClick,
@@ -74,6 +76,7 @@ fun HomeScreen(
         }
 
         if (filtersOpen) {
+            BackHandler { filtersOpen = false }
             FilterPanel(
                 filter = filter,
                 onQueryChanged = onQueryChanged,
@@ -146,6 +149,7 @@ private fun ErrorContent(
 private fun CatalogContent(
     content: HomeContent,
     filter: FilterState,
+    filtersOpen: Boolean,
     onOpenFilters: () -> Unit,
     onClearFilters: () -> Unit,
     onTitleClick: (TitleSummary) -> Unit,
@@ -153,8 +157,9 @@ private fun CatalogContent(
     val firstFocusableRow = content.rows.indexOfFirst { it.titles.isNotEmpty() }
     val firstPosterFocus = remember { FocusRequester() }
 
-    if (firstFocusableRow >= 0) {
-        LaunchedEffect(content) {
+    // While the filter panel owns focus, refreshed rows must not pull it back to the grid.
+    if (firstFocusableRow >= 0 && !filtersOpen) {
+        LaunchedEffect(content, filtersOpen) {
             firstPosterFocus.requestFocus()
         }
     }

@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -45,7 +46,7 @@ fun PlayerScreen(
     titleId: String,
     startPositionMs: Long,
     viewModel: PlayerViewModel,
-    okHttpClient: OkHttpClient,
+    mediaOkHttpClient: OkHttpClient,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -70,7 +71,7 @@ fun PlayerScreen(
                 streamInfo = currentState.streamInfo,
                 startPositionMs = startPositionMs,
                 viewModel = viewModel,
-                okHttpClient = okHttpClient,
+                mediaOkHttpClient = mediaOkHttpClient,
                 onBack = onBack,
             )
         }
@@ -82,31 +83,42 @@ private fun PlayerContent(
     streamInfo: StreamInfo,
     startPositionMs: Long,
     viewModel: PlayerViewModel,
-    okHttpClient: OkHttpClient,
+    mediaOkHttpClient: OkHttpClient,
     onBack: () -> Unit,
 ) {
+    val candidates = streamInfo.candidateUrls
+    var candidateIndex by remember(streamInfo) { mutableIntStateOf(0) }
     var playbackFailed by remember(streamInfo) { mutableStateOf(false) }
     val context = LocalContext.current
-    val player = remember(streamInfo, startPositionMs, okHttpClient) {
-        val builder = ExoPlayer.Builder(context)
-        if (streamInfo.headers.isNotEmpty()) {
-            val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
-                .setDefaultRequestProperties(streamInfo.headers)
-            builder.setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+    val currentUrl = candidates[candidateIndex]
+    val player = remember(currentUrl, startPositionMs, mediaOkHttpClient) {
+        // Media is served by third-party CDNs, so downloads use the credential-free client. The HLS
+        // and DASH extensions are picked up by DefaultMediaSourceFactory from the classpath.
+        val dataSourceFactory = OkHttpDataSource.Factory(mediaOkHttpClient).apply {
+            if (streamInfo.headers.isNotEmpty()) {
+                setDefaultRequestProperties(streamInfo.headers)
+            }
         }
-        builder.build().apply {
-            addListener(
-                object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        playbackFailed = true
-                    }
-                },
-            )
-            setMediaItem(MediaItem.fromUri(streamInfo.url))
-            if (startPositionMs > 0) seekTo(startPositionMs)
-            prepare()
-            playWhenReady = true
-        }
+        ExoPlayer.Builder(context)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .build()
+            .apply {
+                addListener(
+                    object : Player.Listener {
+                        override fun onPlayerError(error: PlaybackException) {
+                            if (candidateIndex < candidates.lastIndex) {
+                                candidateIndex += 1
+                            } else {
+                                playbackFailed = true
+                            }
+                        }
+                    },
+                )
+                setMediaItem(MediaItem.fromUri(currentUrl))
+                if (startPositionMs > 0) seekTo(startPositionMs)
+                prepare()
+                playWhenReady = true
+            }
     }
 
     LaunchedEffect(player, viewModel) {
@@ -140,6 +152,7 @@ private fun PlayerContent(
                 this.player = player
             }
         },
+        update = { view -> view.player = player },
         modifier = Modifier.fillMaxSize(),
     )
 

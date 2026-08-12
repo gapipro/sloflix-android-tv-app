@@ -3,6 +3,7 @@ package com.sloflix.tv.ui.login
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sloflix.tv.domain.repo.AuthRepository
+import com.sloflix.tv.domain.repo.SessionValidity
 import com.sloflix.tv.domain.session.SessionStore
 import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
@@ -65,15 +66,19 @@ class LoginViewModel(
                 return@launch
             }
 
-            if (authRepository.validateSession(session)) {
-                mutableUiState.update { it.copy(destination = SessionDestination.Home) }
-            } else {
-                sessionStore.clear()
-                mutableUiState.update {
-                    it.copy(
-                        destination = SessionDestination.Login,
-                        errorMessage = "Session expired",
-                    )
+            when (authRepository.validateSession(session)) {
+                // An unreachable server says nothing about the session, so the stored one is kept
+                // and Home decides what it can show offline.
+                SessionValidity.Valid, SessionValidity.Unverified ->
+                    mutableUiState.update { it.copy(destination = SessionDestination.Home) }
+                SessionValidity.Invalid -> {
+                    sessionStore.clear()
+                    mutableUiState.update {
+                        it.copy(
+                            destination = SessionDestination.Login,
+                            errorMessage = "Session expired",
+                        )
+                    }
                 }
             }
         }
