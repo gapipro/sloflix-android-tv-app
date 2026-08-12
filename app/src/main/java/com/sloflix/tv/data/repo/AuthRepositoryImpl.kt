@@ -32,12 +32,17 @@ class AuthRepositoryImpl(
     }
 
     override suspend fun validateSession(session: Session): Boolean {
-        if (isExpired(session.accessToken)) return false
+        if (isExpired(session.accessToken)) {
+            sessionProvider.update(null)
+            return false
+        }
         sessionProvider.update(session)
-        return runCatching {
+        val isValid = runCatching {
             val response = api.preferences()
             response.isSuccessful && response.body()?.status == "success"
         }.getOrDefault(false)
+        if (!isValid) sessionProvider.update(null)
+        return isValid
     }
 
     private fun isExpired(token: String): Boolean = runCatching {

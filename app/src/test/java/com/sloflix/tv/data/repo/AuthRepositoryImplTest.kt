@@ -3,6 +3,8 @@ package com.sloflix.tv.data.repo
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import com.sloflix.tv.data.api.MutableSessionProvider
 import com.sloflix.tv.data.api.SloflixApi
+import com.sloflix.tv.domain.session.Session
+import java.util.Base64
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,5 +70,34 @@ class AuthRepositoryImplTest {
             """{"username":"tester","password":"fake-password"}""",
             request.body.readUtf8(),
         )
+    }
+
+    @Test
+    fun `failed server validation clears rejected session`() = runTest {
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(500)
+                .addHeader("Content-Type", "application/json")
+                .setBody("""{"code":500,"status":"failed"}"""),
+        )
+        val json = Json { ignoreUnknownKeys = true }
+        val api = Retrofit.Builder()
+            .baseUrl(server.url("/v1/"))
+            .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+            .build()
+            .create(SloflixApi::class.java)
+        val sessionProvider = MutableSessionProvider()
+        val repository = AuthRepositoryImpl(api, sessionProvider)
+        val session = Session(futureToken())
+
+        assertEquals(false, repository.validateSession(session))
+        assertEquals(null, sessionProvider.session())
+    }
+
+    private fun futureToken(): String {
+        val payload = """{"exp":${System.currentTimeMillis() / 1_000 + 3_600}}"""
+        val encoded = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(payload.toByteArray())
+        return "header.$encoded.signature"
     }
 }

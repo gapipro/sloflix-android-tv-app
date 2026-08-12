@@ -36,9 +36,12 @@ class CatalogRepositoryImpl(
         }
         val query = filter.query.orEmpty()
         val response = api.media(
-            sortBy = if (query.isNotBlank()) 7 else 1,
+            sortBy = filter.sortBy ?: if (query.isNotBlank()) 7 else 1,
             genres = genreIds.joinToString(","),
+            type = filter.selectedType,
             query = query,
+            limit = filter.limit,
+            offset = filter.offset,
         )
         val body = response.body()
         check(response.isSuccessful && body?.status == "success") {
@@ -49,7 +52,22 @@ class CatalogRepositoryImpl(
 
     override suspend fun filterOptions(session: Session): Result<FilterState> =
         categories(session).map { categories ->
-            FilterState(availableGenres = categories.map { it.id to it.name })
+            FilterState(
+                availableGenres = categories.map { it.id to it.name },
+                availableTypes = listOf(
+                    1 to "Films",
+                    2 to "Series",
+                ),
+                availableSorts = listOf(
+                    1 to "Newest added",
+                    2 to "Oldest added",
+                    3 to "Highest rating",
+                    4 to "Year descending",
+                    5 to "Year ascending",
+                    6 to "Most watched",
+                    7 to "Relevance",
+                ),
+            )
         }
 
     override suspend fun details(session: Session, titleId: String): Result<TitleDetails> =
