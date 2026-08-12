@@ -132,7 +132,7 @@ private class FakeCatalogRepository(
         continueWatchingResult
 
     override suspend fun filterOptions(session: Session): Result<FilterState> =
-        error("Not used")
+        Result.success(FilterState())
 
     override suspend fun details(session: Session, titleId: String): Result<TitleDetails> =
         error("Not used")

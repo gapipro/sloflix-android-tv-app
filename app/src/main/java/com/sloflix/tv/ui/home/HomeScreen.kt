@@ -14,7 +14,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -25,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.sloflix.tv.domain.model.FilterState
 import com.sloflix.tv.domain.model.TitleSummary
 import com.sloflix.tv.ui.components.PosterCard
 import com.sloflix.tv.ui.components.UiState
@@ -36,10 +40,19 @@ private val SecondaryText = Color(0xFFC5CBD6)
 @Composable
 fun HomeScreen(
     state: UiState<HomeContent>,
+    filter: FilterState,
     onRetry: () -> Unit,
     onTitleClick: (TitleSummary) -> Unit,
+    onQueryChanged: (String) -> Unit,
+    onGenreToggle: (String) -> Unit,
+    onYearSelected: (Int?) -> Unit,
+    onTypeSelected: (Int?) -> Unit,
+    onSortSelected: (Int?) -> Unit,
+    onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var filtersOpen by remember { mutableStateOf(false) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -53,7 +66,24 @@ fun HomeScreen(
             )
             is UiState.Ready -> CatalogContent(
                 content = state.value,
+                filter = filter,
+                onOpenFilters = { filtersOpen = true },
+                onClearFilters = onClearFilters,
                 onTitleClick = onTitleClick,
+            )
+        }
+
+        if (filtersOpen) {
+            FilterPanel(
+                filter = filter,
+                onQueryChanged = onQueryChanged,
+                onGenreToggle = onGenreToggle,
+                onYearSelected = onYearSelected,
+                onTypeSelected = onTypeSelected,
+                onSortSelected = onSortSelected,
+                onClear = onClearFilters,
+                onClose = { filtersOpen = false },
+                modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
     }
@@ -115,6 +145,9 @@ private fun ErrorContent(
 @Composable
 private fun CatalogContent(
     content: HomeContent,
+    filter: FilterState,
+    onOpenFilters: () -> Unit,
+    onClearFilters: () -> Unit,
     onTitleClick: (TitleSummary) -> Unit,
 ) {
     val firstFocusableRow = content.rows.indexOfFirst { it.titles.isNotEmpty() }
@@ -144,17 +177,32 @@ private fun CatalogContent(
                     style = MaterialTheme.typography.displaySmall,
                     color = Color.White,
                 )
+                Spacer(Modifier.height(18.dp))
+                Button(onClick = onOpenFilters) {
+                    Text("Filters")
+                }
             }
         }
 
         if (firstFocusableRow < 0) {
             item {
-                Text(
-                    text = "There’s nothing here yet.",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = SecondaryText,
-                    modifier = Modifier.padding(horizontal = 56.dp),
-                )
+                Column(modifier = Modifier.padding(horizontal = 56.dp)) {
+                    Text(
+                        text = if (filter.hasActiveFilters()) {
+                            "No titles match"
+                        } else {
+                            "There’s nothing here yet."
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        color = SecondaryText,
+                    )
+                    if (filter.hasActiveFilters()) {
+                        Spacer(Modifier.height(18.dp))
+                        Button(onClick = onClearFilters) {
+                            Text("Clear filters")
+                        }
+                    }
+                }
             }
         } else {
             itemsIndexed(
@@ -176,6 +224,13 @@ private fun CatalogContent(
         }
     }
 }
+
+private fun FilterState.hasActiveFilters() =
+    selectedGenreIds.isNotEmpty() ||
+        selectedYear != null ||
+        !query.isNullOrBlank() ||
+        selectedType != null ||
+        sortBy != null
 
 @Composable
 private fun CategoryRow(

@@ -60,6 +60,7 @@ private fun SloflixNavContent(
 ) {
     val navController = rememberNavController()
     val homeState by homeViewModel.uiState.collectAsStateWithLifecycle()
+    val homeFilter by homeViewModel.filterState.collectAsStateWithLifecycle()
     LaunchedEffect(loginViewModel, navController) {
         loginViewModel.events.collect { event ->
             when (event) {
@@ -94,7 +95,14 @@ private fun SloflixNavContent(
             }
             HomeScreen(
                 state = homeState,
+                filter = homeFilter,
                 onRetry = homeViewModel::retry,
+                onQueryChanged = homeViewModel::updateQuery,
+                onGenreToggle = homeViewModel::toggleGenre,
+                onYearSelected = homeViewModel::selectYear,
+                onTypeSelected = homeViewModel::selectType,
+                onSortSelected = homeViewModel::selectSort,
+                onClearFilters = homeViewModel::clearFilters,
                 onTitleClick = { title ->
                     navController.navigate("details/${title.id}")
                 },
