@@ -17,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.sloflix.tv.ui.components.UiState
 import com.sloflix.tv.ui.details.DetailsScreen
 import com.sloflix.tv.ui.details.DetailsViewModel
 import com.sloflix.tv.ui.home.HomeScreen
@@ -122,8 +123,13 @@ private fun SloflixNavContent(
             LaunchedEffect(detailsViewModel, titleId) {
                 detailsViewModel.load(titleId)
             }
+            val displayState = when (val state = detailsState) {
+                is UiState.Ready ->
+                    if (state.value.title.id == titleId) state else UiState.Loading
+                else -> state
+            }
             DetailsScreen(
-                state = detailsState,
+                state = displayState,
                 onRetry = detailsViewModel::retry,
                 onPlay = { id, startPositionMs ->
                     val route = buildString {

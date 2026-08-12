@@ -22,6 +22,32 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DetailsViewModelTest {
     @Test
+    fun `ready state shows resume CTA when catalog resume position is greater than zero`() =
+        runTest {
+            val title = titleDetails(resumePositionMs = 120_000)
+            val viewModel = DetailsViewModel(
+                catalogRepository = FakeCatalogRepository(Result.success(title)),
+                playbackRepository = FakePlaybackRepository(Result.success(null)),
+                sessionStore = FakeSessionStore(Session("token")),
+                dispatcher = StandardTestDispatcher(testScheduler),
+            )
+
+            viewModel.load(title.id)
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertTrue(state is UiState.Ready)
+            assertEquals(
+                DetailsContent(
+                    title = title,
+                    resumePositionMs = 120_000,
+                ),
+                (state as UiState.Ready).value,
+            )
+            assertTrue(state.value.canResume)
+        }
+
+    @Test
     fun `ready state shows resume CTA when saved progress is greater than zero`() = runTest {
         val title = titleDetails()
         val viewModel = DetailsViewModel(
@@ -54,7 +80,7 @@ class DetailsViewModelTest {
         assertTrue(state.value.canResume)
     }
 
-    private fun titleDetails() = TitleDetails(
+    private fun titleDetails(resumePositionMs: Long? = null) = TitleDetails(
         id = "arrival",
         name = "Arrival",
         description = "A linguist works to communicate with visitors from another world.",
@@ -62,7 +88,7 @@ class DetailsViewModelTest {
         backdropUrl = "https://example.com/arrival-backdrop.jpg",
         year = 2016,
         genres = listOf("Drama", "Science fiction"),
-        resumePositionMs = null,
+        resumePositionMs = resumePositionMs,
     )
 }
 

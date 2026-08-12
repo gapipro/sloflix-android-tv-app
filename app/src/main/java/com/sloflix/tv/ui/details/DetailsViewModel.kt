@@ -35,7 +35,10 @@ class DetailsViewModel(
     private var isLoading = false
 
     fun load(titleId: String) {
-        if (isLoading || (this.titleId == titleId && mutableUiState.value is UiState.Ready)) return
+        if (this.titleId == titleId && mutableUiState.value is UiState.Ready) return
+        if (this.titleId != titleId) {
+            mutableUiState.value = UiState.Loading
+        }
         this.titleId = titleId
         loadDetails(titleId)
     }
@@ -60,6 +63,7 @@ class DetailsViewModel(
                 val resumePosition = savedPosition
                     ?: title.resumePositionMs?.takeIf { it > 0 }
                     ?: 0L
+                if (this@DetailsViewModel.titleId != titleId) return@launch
                 mutableUiState.value = UiState.Ready(
                     DetailsContent(
                         title = title,
@@ -67,11 +71,14 @@ class DetailsViewModel(
                     ),
                 )
             } catch (error: Exception) {
+                if (this@DetailsViewModel.titleId != titleId) return@launch
                 mutableUiState.value = UiState.Error(
                     error.message ?: "Unable to load title details",
                 )
             } finally {
-                isLoading = false
+                if (this@DetailsViewModel.titleId == titleId) {
+                    isLoading = false
+                }
             }
         }
     }
