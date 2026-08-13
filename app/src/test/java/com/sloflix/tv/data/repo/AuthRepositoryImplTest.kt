@@ -60,6 +60,7 @@ class AuthRepositoryImplTest {
         assertTrue(result.isSuccess)
         assertEquals("fake.header.signature", result.getOrThrow().accessToken)
         assertEquals("sloflix=fake-cookie", result.getOrThrow().cookieHeader)
+        assertEquals("tester", result.getOrThrow().username)
         assertEquals(result.getOrThrow(), sessionProvider.session())
         val request = server.takeRequest()
         assertEquals("/v1/user/login", request.path)

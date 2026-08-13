@@ -6,7 +6,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.darkColorScheme
 
 private val CinematicColorScheme = darkColorScheme(
-    primary = Color(0xFFE52B3D),
+    primary = Color(0xFFE50913),
     onPrimary = Color.White,
     background = Color(0xFF090C12),
     onBackground = Color.White,

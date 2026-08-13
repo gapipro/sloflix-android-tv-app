@@ -32,7 +32,11 @@ class AuthRepositoryImpl(
             .map { it.substringBefore(';') }
             .takeIf { it.isNotEmpty() }
             ?.joinToString("; ")
-        Session(token, cookie).also(sessionProvider::update)
+        Session(
+            accessToken = token,
+            cookieHeader = cookie,
+            username = username.ifBlank { Session.usernameFromAccessToken(token) },
+        ).also(sessionProvider::update)
     }
 
     override suspend fun validateSession(session: Session): SessionValidity {

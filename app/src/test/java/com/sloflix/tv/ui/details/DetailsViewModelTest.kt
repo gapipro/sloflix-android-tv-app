@@ -1,6 +1,7 @@
 package com.sloflix.tv.ui.details
 
 import com.sloflix.tv.domain.model.Category
+import com.sloflix.tv.domain.model.EpisodeSummary
 import com.sloflix.tv.domain.model.FilterState
 import com.sloflix.tv.domain.model.PlaybackProgress
 import com.sloflix.tv.domain.model.StreamInfo
@@ -41,6 +42,7 @@ class DetailsViewModelTest {
             assertTrue(state is UiState.Ready)
             assertEquals(
                 DetailsContent(
+                    requestId = title.id,
                     title = title,
                     resumePositionMs = 120_000,
                 ),
@@ -75,6 +77,7 @@ class DetailsViewModelTest {
         assertTrue(state is UiState.Ready)
         assertEquals(
             DetailsContent(
+                requestId = title.id,
                 title = title,
                 resumePositionMs = 93_000,
             ),
@@ -103,6 +106,48 @@ class DetailsViewModelTest {
         )
     }
 
+    @Test
+    fun `show details loads seasons and episodes`() = runTest {
+        val show = TitleDetails(
+            id = "show-1",
+            name = "Demo Show",
+            description = "A series",
+            posterUrl = null,
+            backdropUrl = null,
+            year = 2024,
+            genres = listOf("Drama"),
+            resumePositionMs = null,
+            kind = com.sloflix.tv.domain.model.MediaKind.Show,
+            seasons = listOf(1, 2),
+        )
+        val episodes = listOf(
+            EpisodeSummary("e1", "Pilot", null, 1),
+            EpisodeSummary("e2", "Next", null, 2),
+        )
+        val catalog = FakeCatalogRepository(
+            detailsResult = Result.success(show),
+            episodesBySeason = mapOf(1 to Result.success(episodes)),
+        )
+        val viewModel = DetailsViewModel(
+            catalogRepository = catalog,
+            playbackRepository = FakePlaybackRepository(Result.success(null)),
+            sessionStore = FakeSessionStore(Session("token")),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.load(show.id)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as UiState.Ready
+        assertEquals(1, state.value.selectedSeason)
+        assertEquals(episodes, state.value.episodes)
+        assertTrue(state.value.isSeries)
+
+        viewModel.selectSeason(2)
+        advanceUntilIdle()
+        assertEquals(2, state.value.selectedSeason.let { viewModel.uiState.value.let { (it as UiState.Ready).value.selectedSeason } })
+    }
+
     private fun titleDetails(resumePositionMs: Long? = null) = TitleDetails(
         id = "arrival",
         name = "Arrival",
@@ -117,6 +162,7 @@ class DetailsViewModelTest {
 
 private class FakeCatalogRepository(
     private val detailsResult: Result<TitleDetails>,
+    private val episodesBySeason: Map<Int, Result<List<EpisodeSummary>>> = emptyMap(),
 ) : CatalogRepository {
     override suspend fun details(session: Session, titleId: String): Result<TitleDetails> =
         detailsResult
@@ -133,6 +179,13 @@ private class FakeCatalogRepository(
 
     override suspend fun continueWatching(session: Session): Result<List<TitleSummary>> =
         error("Not used")
+
+    override suspend fun episodes(
+        session: Session,
+        showId: String,
+        season: Int,
+    ): Result<List<EpisodeSummary>> =
+        episodesBySeason[season] ?: Result.success(emptyList())
 }
 
 private class FakePlaybackRepository(
@@ -155,6 +208,9 @@ private class FakePlaybackRepository(
         session: Session,
         progress: PlaybackProgress,
     ): Result<Unit> = error("Not used")
+
+    override suspend fun clearProgress(session: Session, titleId: String): Result<Unit> =
+        error("Not used")
 }
 
 private class FakeSessionStore(

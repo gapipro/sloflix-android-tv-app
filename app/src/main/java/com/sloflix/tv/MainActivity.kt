@@ -1,6 +1,7 @@
 package com.sloflix.tv
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -27,6 +28,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // adjustPan keeps fullscreen player layout stable while still allowing IME on login/search.
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN)
         setContent {
             SloflixTheme {
                 SloflixNav(
@@ -34,6 +37,7 @@ class MainActivity : ComponentActivity() {
                     homeViewModel = homeViewModel,
                     detailsViewModel = detailsViewModel,
                     playerViewModel = playerViewModel,
+                    languageStore = (application as SloflixApp).container.languageStore,
                     mediaOkHttpClient = (application as SloflixApp).container.mediaOkHttpClient,
                 )
             }

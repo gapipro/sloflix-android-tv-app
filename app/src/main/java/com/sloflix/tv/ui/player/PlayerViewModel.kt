@@ -7,7 +7,8 @@ import com.sloflix.tv.domain.model.StreamInfo
 import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
-import com.sloflix.tv.ui.components.toUserMessage
+import com.sloflix.tv.domain.settings.LanguageStore
+import com.sloflix.tv.ui.i18n.stringsFor
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -24,9 +25,14 @@ sealed interface PlayerUiState {
     data class Error(val message: String) : PlayerUiState
 }
 
+@Deprecated("Use stringsFor(language).playbackFailed")
+const val PlaybackFailedMessage =
+    "Predvajanje spodletelo. Če uporabljate kakršne koli uprašljive načine dostopa do interneta (VPN, Mobilni Router, Safari Browser) jih poskusite izklopiti."
+
 class PlayerViewModel(
     private val playbackRepository: PlaybackRepository,
     private val sessionStore: SessionStore,
+    private val languageStore: LanguageStore,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
 ) : ViewModel() {
     private val mutableUiState = MutableStateFlow<PlayerUiState>(PlayerUiState.Loading)
@@ -50,11 +56,10 @@ class PlayerViewModel(
                 if (this@PlayerViewModel.titleId != titleId) return@launch
                 session = currentSession
                 mutableUiState.value = PlayerUiState.Ready(streamInfo)
-            } catch (error: Exception) {
+            } catch (_: Exception) {
                 if (this@PlayerViewModel.titleId == titleId) {
-                    mutableUiState.value = PlayerUiState.Error(
-                        error.toUserMessage("Can’t play this title"),
-                    )
+                    val message = stringsFor(languageStore.get()).playbackFailed
+                    mutableUiState.value = PlayerUiState.Error(message)
                 }
             }
         }

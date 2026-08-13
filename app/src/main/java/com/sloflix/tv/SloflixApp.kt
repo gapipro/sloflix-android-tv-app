@@ -37,6 +37,7 @@ class SloflixApp : Application(), ImageLoaderFactory {
                 require(modelClass.isAssignableFrom(HomeViewModel::class.java))
                 return HomeViewModel(
                     catalogRepository = container.catalogRepository,
+                    playbackRepository = container.playbackRepository,
                     sessionStore = container.sessionStore,
                 ) as T
             }
@@ -65,6 +66,7 @@ class SloflixApp : Application(), ImageLoaderFactory {
                 return PlayerViewModel(
                     playbackRepository = container.playbackRepository,
                     sessionStore = container.sessionStore,
+                    languageStore = container.languageStore,
                 ) as T
             }
         }

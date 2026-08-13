@@ -8,4 +8,6 @@ interface PlaybackRepository {
     suspend fun stream(session: Session, titleId: String): Result<StreamInfo>
     suspend fun saveProgress(session: Session, progress: PlaybackProgress): Result<Unit>
     suspend fun loadProgress(session: Session, titleId: String): Result<PlaybackProgress?>
+    /** Clears server watch time and drops the title from the local resume list. */
+    suspend fun clearProgress(session: Session, titleId: String): Result<Unit>
 }

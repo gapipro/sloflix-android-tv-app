@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="678"
+    android:viewportHeight="678">
+    <!-- Official Sloflix S mark (from www.sloflix.com/assets/s_white.*.svg) -->
+    <path
+        android:fillColor="#999999"
+        android:pathData="M473.439,558.503L132.149,217.213L204.564,144.798L545.854,486.088Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M133.027,115.974L333.338,42.165L544.968,115.974L544.968,217.244L333.338,146.829L133.027,217.244Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M544.969,589.061L344.657,662.870L133.027,589.061L133.027,487.791L344.657,558.207L544.969,487.791Z" />
+</vector>

@@ -8,14 +8,18 @@ import com.sloflix.tv.data.api.MutableSessionProvider
 import com.sloflix.tv.data.api.SloflixApi
 import com.sloflix.tv.data.api.UserAgentInterceptor
 import com.sloflix.tv.data.net.AndroidNetworkStatus
+import com.sloflix.tv.data.playback.DataStoreContinueWatchingStore
 import com.sloflix.tv.data.repo.AuthRepositoryImpl
 import com.sloflix.tv.data.repo.CatalogRepositoryImpl
 import com.sloflix.tv.data.repo.PlaybackRepositoryImpl
 import com.sloflix.tv.data.session.DataStoreSessionStore
+import com.sloflix.tv.data.settings.DataStoreLanguageStore
+import com.sloflix.tv.domain.playback.ContinueWatchingStore
 import com.sloflix.tv.domain.repo.AuthRepository
 import com.sloflix.tv.domain.repo.CatalogRepository
 import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.SessionStore
+import com.sloflix.tv.domain.settings.LanguageStore
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -33,6 +37,9 @@ class AppContainer(
     private val sessionProvider = MutableSessionProvider()
 
     val sessionStore: SessionStore = DataStoreSessionStore(context.applicationContext)
+    val languageStore: LanguageStore = DataStoreLanguageStore(context.applicationContext)
+    val continueWatchingStore: ContinueWatchingStore =
+        DataStoreContinueWatchingStore(context.applicationContext)
 
     /** Sloflix API only: this is the one client allowed to attach the bearer token and cookies. */
     val apiOkHttpClient: OkHttpClient = OkHttpClient.Builder()
@@ -66,8 +73,16 @@ class AppContainer(
         sessionProvider = sessionProvider,
         networkStatus = AndroidNetworkStatus(context.applicationContext),
     )
-    val catalogRepository: CatalogRepository = CatalogRepositoryImpl(api, sessionProvider)
-    val playbackRepository: PlaybackRepository = PlaybackRepositoryImpl(api, sessionProvider)
+    val catalogRepository: CatalogRepository = CatalogRepositoryImpl(
+        api = api,
+        sessionProvider = sessionProvider,
+        continueWatchingStore = continueWatchingStore,
+    )
+    val playbackRepository: PlaybackRepository = PlaybackRepositoryImpl(
+        api = api,
+        sessionProvider = sessionProvider,
+        continueWatchingStore = continueWatchingStore,
+    )
 
     companion object {
         const val BASE_URL = "https://api.sloflix.com/v1/"

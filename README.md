@@ -1,39 +1,40 @@
 # Sloflix Android TV
 
-Sloflix is an Android TV application built with Kotlin and Compose for TV.
+Independent Android TV client for [Sloflix](https://sloflix.com), built with Kotlin and Jetpack Compose for TV. Not an official Sloflix product.
 
-## Build
+## Requirements
 
-Use Android Studio's bundled JDK 17 or another installed JDK 17:
+- Android Studio (or JDK **17**)
+- Android TV device or emulator (**API 30+**)
+
+## Quick start
+
+On macOS, point Gradle at Android Studio’s bundled JBR if `java` is missing or too old:
+
+```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+```
+
+Build a debug APK:
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
-The APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
+Output: `app/build/outputs/apk/debug/app-debug.apk`
 
-## Install on Nvidia Shield
-
-Enable Developer options and Network debugging on the Shield, then run:
+Install (USB or network `adb`):
 
 ```bash
-adb connect <shield-ip>:5555
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
+Full prerequisites, Shield/TV install, release notes, and optional e2e tests: **[Build instructions](docs/BUILD.md)**.
+
 ## Sign in
 
-Open Sloflix from the TV launcher and sign in with your Sloflix account. Do not
-store account credentials in this repository.
+Use a real Sloflix account on the device. Never commit credentials, keystores, or `local.properties`.
 
-## Shield smoke checklist
+## License / status
 
-- [ ] App appears in the Android TV launcher.
-- [ ] Login success and failure messages are clear.
-- [ ] Killing and relaunching the app keeps the user signed in.
-- [ ] Relaunching with the network unplugged still lands on Home, not Login.
-- [ ] Back closes the filter panel instead of leaving the app.
-- [ ] Categories scroll correctly with the D-pad.
-- [ ] Filters change the displayed results.
-- [ ] Opening details and selecting Play starts playback.
-- [ ] When progress is available, Resume and Continue watching appear.
+Personal / independently developed client. Target public repo: [gapipro/sloflix-android-tv-app](https://github.com/gapipro/sloflix-android-tv-app).

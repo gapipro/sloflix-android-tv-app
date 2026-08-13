@@ -2,9 +2,12 @@ package com.sloflix.tv.ui.home
 
 import com.sloflix.tv.domain.model.Category
 import com.sloflix.tv.domain.model.FilterState
+import com.sloflix.tv.domain.model.PlaybackProgress
+import com.sloflix.tv.domain.model.StreamInfo
 import com.sloflix.tv.domain.model.TitleDetails
 import com.sloflix.tv.domain.model.TitleSummary
 import com.sloflix.tv.domain.repo.CatalogRepository
+import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
 import com.sloflix.tv.ui.components.UiState
@@ -24,6 +27,7 @@ class HomeViewModelFilterTest {
         val repository = FilterCatalogRepository()
         val viewModel = HomeViewModel(
             catalogRepository = repository,
+            playbackRepository = FilterPlaybackRepository(),
             sessionStore = FilterSessionStore(Session("token")),
             dispatcher = StandardTestDispatcher(testScheduler),
         )
@@ -43,6 +47,7 @@ class HomeViewModelFilterTest {
         val repository = FilterCatalogRepository()
         val viewModel = HomeViewModel(
             catalogRepository = repository,
+            playbackRepository = FilterPlaybackRepository(),
             sessionStore = FilterSessionStore(Session("token")),
             dispatcher = StandardTestDispatcher(testScheduler),
         )
@@ -62,10 +67,34 @@ class HomeViewModelFilterTest {
     }
 
     @Test
+    fun `selecting Filmi type updates filter and keeps multi-row browse`() = runTest {
+        val repository = FilterCatalogRepository()
+        val viewModel = HomeViewModel(
+            catalogRepository = repository,
+            playbackRepository = FilterPlaybackRepository(),
+            sessionStore = FilterSessionStore(Session("token")),
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        viewModel.load()
+        advanceUntilIdle()
+        viewModel.selectType(1)
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.filterState.value.selectedType)
+        assertEquals(1, repository.receivedFilters.last().selectedType)
+
+        viewModel.selectType(1)
+        advanceUntilIdle()
+        assertEquals(null, viewModel.filterState.value.selectedType)
+    }
+
+    @Test
     fun `filter change keeps the loaded rows on screen while refreshing`() = runTest {
         val repository = FilterCatalogRepository()
         val viewModel = HomeViewModel(
             catalogRepository = repository,
+            playbackRepository = FilterPlaybackRepository(),
             sessionStore = FilterSessionStore(Session("token")),
             dispatcher = StandardTestDispatcher(testScheduler),
         )
@@ -108,6 +137,30 @@ private class FilterCatalogRepository : CatalogRepository {
 
     override suspend fun continueWatching(session: Session): Result<List<TitleSummary>> =
         Result.success(emptyList())
+
+    override suspend fun episodes(
+        session: Session,
+        showId: String,
+        season: Int,
+    ): Result<List<com.sloflix.tv.domain.model.EpisodeSummary>> = Result.success(emptyList())
+}
+
+private class FilterPlaybackRepository : PlaybackRepository {
+    override suspend fun stream(session: Session, titleId: String): Result<StreamInfo> =
+        error("Not used")
+
+    override suspend fun saveProgress(
+        session: Session,
+        progress: PlaybackProgress,
+    ): Result<Unit> = error("Not used")
+
+    override suspend fun loadProgress(
+        session: Session,
+        titleId: String,
+    ): Result<PlaybackProgress?> = error("Not used")
+
+    override suspend fun clearProgress(session: Session, titleId: String): Result<Unit> =
+        error("Not used")
 }
 
 private class FilterSessionStore(

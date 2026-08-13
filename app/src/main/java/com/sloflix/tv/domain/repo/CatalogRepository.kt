@@ -1,6 +1,7 @@
 package com.sloflix.tv.domain.repo
 
 import com.sloflix.tv.domain.model.Category
+import com.sloflix.tv.domain.model.EpisodeSummary
 import com.sloflix.tv.domain.model.FilterState
 import com.sloflix.tv.domain.model.TitleDetails
 import com.sloflix.tv.domain.model.TitleSummary
@@ -15,5 +16,10 @@ interface CatalogRepository {
     ): Result<List<TitleSummary>>
     suspend fun filterOptions(session: Session): Result<FilterState>
     suspend fun details(session: Session, titleId: String): Result<TitleDetails>
+    suspend fun episodes(
+        session: Session,
+        showId: String,
+        season: Int,
+    ): Result<List<EpisodeSummary>>
     suspend fun continueWatching(session: Session): Result<List<TitleSummary>>
 }

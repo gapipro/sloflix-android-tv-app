@@ -35,6 +35,12 @@ interface SloflixApi {
         @Query("dont_count_view") dontCountView: Boolean? = null,
     ): Response<DetailsResponse>
 
+    @GET("media/episodes/{showId}/{season}")
+    suspend fun episodes(
+        @Path("showId") showId: String,
+        @Path("season") season: Int,
+    ): Response<MediaResponse>
+
     @POST("media/{titleId}/player/metadata")
     suspend fun saveProgress(
         @Path("titleId") titleId: String,
@@ -87,6 +93,8 @@ data class MediaDto(
     @SerialName("media_id") val id: Int,
     @SerialName("media_name") val name: String,
     @SerialName("media_thumbnail_url") val thumbnailUrl: String? = null,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("episode_index") val episodeIndex: Int? = null,
 )
 
 @Serializable
@@ -104,10 +112,34 @@ data class DetailsDto(
     @SerialName("media_thumbnail_url") val thumbnailUrl: String? = null,
     @SerialName("media_banner_url") val bannerUrl: String? = null,
     @SerialName("media_year") val year: Int? = null,
+    @SerialName("media_length") val length: String? = null,
+    @SerialName("media_rating") val rating: MediaRatingDto? = null,
     @SerialName("media_genres") val genres: List<GenreDto> = emptyList(),
     @SerialName("media_sources") val sources: List<MediaSourceDto> = emptyList(),
+    @SerialName("media_type") val mediaType: Int? = null,
+    val season: Int? = null,
+    @SerialName("episode_index") val episodeIndex: Int? = null,
+    @SerialName("parent_media_id") val parentMediaId: Int? = null,
+    val seasons: List<Int> = emptyList(),
     val metadata: PlaybackMetadataDto? = null,
 )
+
+@Serializable
+data class MediaRatingDto(
+    val rating: Double? = null,
+    val numerus: Int? = null,
+) {
+    fun displayLabel(): String? {
+        val value = rating ?: return null
+        val count = numerus
+        val average = when {
+            count != null && count > 0 -> value / count
+            value > 10 -> value / 10.0
+            else -> value
+        }
+        return "%.1f".format(average)
+    }
+}
 
 @Serializable
 data class MediaSourceDto(

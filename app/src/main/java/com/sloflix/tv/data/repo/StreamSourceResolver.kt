@@ -1,95 +1,98 @@
 package com.sloflix.tv.data.repo
 
 import com.sloflix.tv.data.api.MediaSourceDto
-import java.util.Base64
+import com.sloflix.tv.domain.model.SubtitleTrack
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
- * Turns `media_sources` into an ordered list of playable URLs.
+ * Mirrors `UrlDataExtactor` in https://player.sloflix.com/index.js:
+ * the web Video.js player only reads the `source` query parameter from the
+ * player page URL and plays that as `video/mp4`. Subtitles come from the
+ * `subtitle` query param, or from API `subtitle_location` under
+ * `https://www.sloflix.com/subtitles/`.
  *
- * Sloflix hands out `https://player.sloflix.com/...` HTML pages that wrap a signed upstream URL in
- * their query string. The exact parameter name is not documented and could not be captured without
- * a live signed URL (the API spec redacts them), so every query value of the pages is inspected and
- * the first one that is itself an `http(s)` URL — or a base64-encoded one — is treated as the
- * upstream media URL. [UpstreamQueryKeys] are checked first because they are the names such players
- * conventionally use (`source`, `url`, `file`, `src`, …); if none match, any URL-shaped value wins.
- *
- * The player page itself is kept as a last-resort candidate: ExoPlayer cannot render HTML, but
- * keeping it means a title with only wrapper sources still produces a candidate to fail loudly on
- * instead of an empty list.
+ * HTML player / embed pages themselves are not ExoPlayer-compatible and must
+ * never be offered as candidates.
  */
 internal object StreamSourceResolver {
     private const val PlayerHost = "player.sloflix.com"
+    private const val SubtitleBaseUrl = "https://www.sloflix.com/subtitles/"
 
-    private val UpstreamQueryKeys = listOf(
-        "source", "url", "file", "src", "link", "video", "stream", "m3u8", "mp4", "playlist",
-        "media", "target", "hls",
+    /** Hosts that serve interactive HTML players, not progressive media. */
+    private val HtmlPlayerHosts = setOf(
+        PlayerHost,
+        "sf.strp2p.com",
+        "strp2p.com",
     )
 
-    private val DirectMediaExtensions = listOf(
-        ".m3u8", ".mpd", ".mp4", ".m4v", ".mkv", ".webm", ".ts",
-    )
-
-    /**
-     * Candidates ordered by how likely ExoPlayer can play them: direct media URLs first, then
-     * anything unwrapped from a player page, then the wrapper pages themselves. Sources whose URL is
-     * blank or not `http(s)` are unusable and dropped.
-     */
     fun candidates(sources: List<MediaSourceDto>): List<String> =
         sources.mapNotNull { source ->
             source.url.trim().takeIf { it.isNotEmpty() }?.toHttpUrlOrNull()
-        }.flatMap { url ->
+        }.mapNotNull { url ->
             if (url.host.equals(PlayerHost, ignoreCase = true)) {
-                buildList {
-                    upstreamUrl(url)?.let { add(Candidate(it, isWrapper = false)) }
-                    add(Candidate(url.toString(), isWrapper = true))
-                }
+                playableSource(url)
+            } else if (isHtmlPlayerHost(url.host)) {
+                null
             } else {
-                listOf(Candidate(url.toString(), isWrapper = false))
+                url.toString()
             }
-        }.sortedWith(
-            compareBy(
-                { it.isWrapper },
-                { !isDirectMedia(it.url) },
-            ),
-        ).map { it.url }.distinct()
+        }.distinct()
 
-    private fun upstreamUrl(playerUrl: HttpUrl): String? {
-        val named = UpstreamQueryKeys.firstNotNullOfOrNull { key ->
-            playerUrl.queryParameterNames
-                .firstOrNull { it.equals(key, ignoreCase = true) }
-                ?.let(playerUrl::queryParameter)
-                ?.let(::asMediaUrl)
+    /**
+     * Prefer an explicit `subtitle=` URL on the player page (web player), then fall back to
+     * `subtitle_location` files hosted by Sloflix.
+     */
+    fun subtitles(sources: List<MediaSourceDto>): List<SubtitleTrack> {
+        val fromPlayerQuery = sources.mapNotNull { source ->
+            source.url.trim().toHttpUrlOrNull()
+                ?.takeIf { it.host.equals(PlayerHost, ignoreCase = true) }
+                ?.let(::subtitleFromPlayerQuery)
         }
-        if (named != null) return named
-        return playerUrl.queryParameterNames
-            .asSequence()
-            .mapNotNull { playerUrl.queryParameter(it) }
-            .firstNotNullOfOrNull(::asMediaUrl)
+        val fromApi = sources.mapNotNull { source ->
+            source.subtitleLocation
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { location ->
+                    SubtitleTrack(
+                        url = if (location.startsWith("http://") || location.startsWith("https://")) {
+                            location
+                        } else {
+                            SubtitleBaseUrl + location.trimStart('/')
+                        },
+                    )
+                }
+        }
+        return (fromPlayerQuery + fromApi).distinctBy { it.url }
     }
 
-    private fun asMediaUrl(value: String): String? {
-        val trimmed = value.trim()
+    private fun playableSource(playerUrl: HttpUrl): String? {
+        val encoded = playerUrl.queryParameter("source") ?: return null
+        val decoded = decodeQueryValue(encoded) ?: return null
+        val upstream = decoded.toHttpUrlOrNull() ?: return null
+        if (upstream.host.equals(PlayerHost, ignoreCase = true)) return null
+        if (isHtmlPlayerHost(upstream.host)) return null
+        return upstream.toString()
+    }
+
+    private fun subtitleFromPlayerQuery(playerUrl: HttpUrl): SubtitleTrack? {
+        val encoded = playerUrl.queryParameter("subtitle") ?: return null
+        val decoded = decodeQueryValue(encoded) ?: return null
+        val url = decoded.toHttpUrlOrNull()?.toString() ?: return null
+        return SubtitleTrack(url = url)
+    }
+
+    private fun decodeQueryValue(encoded: String): String? {
+        val trimmed = encoded.trim()
         if (trimmed.isEmpty()) return null
-        directUrl(trimmed)?.let { return it }
-        return decodeBase64(trimmed)?.let(::directUrl)
+        return runCatching { java.net.URLDecoder.decode(trimmed, Charsets.UTF_8.name()) }
+            .getOrDefault(trimmed)
+            .trim()
+            .takeIf { it.isNotEmpty() }
     }
 
-    private fun directUrl(value: String): String? = value
-        .takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) }
-        ?.toHttpUrlOrNull()
-        ?.takeUnless { it.host.equals(PlayerHost, ignoreCase = true) }
-        ?.toString()
-
-    private fun decodeBase64(value: String): String? = runCatching {
-        String(Base64.getUrlDecoder().decode(value.trimEnd('=')))
-    }.getOrNull()
-
-    private fun isDirectMedia(url: String): Boolean {
-        val path = url.toHttpUrlOrNull()?.encodedPath?.lowercase() ?: return false
-        return DirectMediaExtensions.any(path::endsWith)
+    private fun isHtmlPlayerHost(host: String): Boolean {
+        val lower = host.lowercase()
+        return HtmlPlayerHosts.any { lower == it || lower.endsWith(".$it") }
     }
-
-    private data class Candidate(val url: String, val isWrapper: Boolean)
 }

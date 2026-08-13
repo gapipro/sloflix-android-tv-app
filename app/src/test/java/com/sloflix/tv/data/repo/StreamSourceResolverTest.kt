@@ -1,91 +1,96 @@
 package com.sloflix.tv.data.repo
 
 import com.sloflix.tv.data.api.MediaSourceDto
-import java.util.Base64
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StreamSourceResolverTest {
     @Test
-    fun `direct media url is preferred over a player page`() {
-        val candidates = StreamSourceResolver.candidates(
-            listOf(
-                source("https://player.sloflix.com/embed?token=abc"),
-                source("https://cdn.example.com/arrival/master.m3u8"),
-            ),
-        )
-
-        assertEquals("https://cdn.example.com/arrival/master.m3u8", candidates.first())
-    }
-
-    @Test
-    fun `upstream url is extracted from the player query string`() {
+    fun `extracts only the source query param from the player page`() {
         val candidates = StreamSourceResolver.candidates(
             listOf(
                 source(
-                    "https://player.sloflix.com/embed?token=abc" +
-                        "&source=https%3A%2F%2Fcdn.example.com%2Farrival%2Fmaster.m3u8",
+                    "https://player.sloflix.com/?source=https%3A%2F%2Fcdn.example.com%2Ffile" +
+                        "&vtt=https%3A%2F%2Fi.doodcdn.io%2Fslide.jpg" +
+                        "&poster=https%3A%2F%2Fdoimg.net%2Fsplash.jpg",
+                ),
+            ),
+        )
+
+        assertEquals(listOf("https://cdn.example.com/file"), candidates)
+    }
+
+    @Test
+    fun `resolves subtitle_location to the sloflix subtitles host`() {
+        val tracks = StreamSourceResolver.subtitles(
+            listOf(
+                MediaSourceDto(
+                    url = "https://player.sloflix.com/?source=https%3A%2F%2Fcdn.example.com%2Ffile",
+                    name = "SLOSubs",
+                    subtitleLocation = "abc-123.vtt",
                 ),
             ),
         )
 
         assertEquals(
             listOf(
-                "https://cdn.example.com/arrival/master.m3u8",
-                "https://player.sloflix.com/embed?token=abc" +
-                    "&source=https%3A%2F%2Fcdn.example.com%2Farrival%2Fmaster.m3u8",
+                com.sloflix.tv.domain.model.SubtitleTrack(
+                    url = "https://www.sloflix.com/subtitles/abc-123.vtt",
+                ),
             ),
-            candidates,
+            tracks,
         )
     }
 
     @Test
-    fun `any url shaped query value is used when no known key matches`() {
-        val candidates = StreamSourceResolver.candidates(
-            listOf(source("https://player.sloflix.com/embed?sig=xyz&upstream=https://cdn.example.com/a.mp4")),
+    fun `prefers subtitle query param from the player page`() {
+        val tracks = StreamSourceResolver.subtitles(
+            listOf(
+                MediaSourceDto(
+                    url = "https://player.sloflix.com/?source=https%3A%2F%2Fcdn.example.com%2Ffile" +
+                        "&subtitle=https%3A%2F%2Fcdn.example.com%2Fsubs.vtt",
+                    name = "SLOSubs",
+                    subtitleLocation = "ignored.vtt",
+                ),
+            ),
         )
 
-        assertEquals("https://cdn.example.com/a.mp4", candidates.first())
+        assertEquals("https://cdn.example.com/subs.vtt", tracks.first().url)
+        assertEquals(2, tracks.size) // query + location, distinct urls
     }
 
     @Test
-    fun `base64 encoded upstream url is decoded`() {
-        val encoded = Base64.getUrlEncoder().withoutPadding()
-            .encodeToString("https://cdn.example.com/a/master.m3u8".toByteArray())
-        val candidates = StreamSourceResolver.candidates(
-            listOf(source("https://player.sloflix.com/embed?file=$encoded")),
-        )
-
-        assertEquals("https://cdn.example.com/a/master.m3u8", candidates.first())
-    }
-
-    @Test
-    fun `unusable sources are dropped and remaining ones stay as fallbacks`() {
+    fun `direct media urls are kept`() {
         val candidates = StreamSourceResolver.candidates(
             listOf(
-                source(""),
-                source("not-a-url"),
-                source("https://cdn.example.com/page.html"),
                 source("https://cdn.example.com/arrival.mp4"),
+                source("https://player.sloflix.com/?token=abc"),
             ),
         )
 
-        assertEquals(
-            listOf(
-                "https://cdn.example.com/arrival.mp4",
-                "https://cdn.example.com/page.html",
-            ),
-            candidates,
-        )
+        assertEquals(listOf("https://cdn.example.com/arrival.mp4"), candidates)
     }
 
     @Test
-    fun `player page without an upstream url is still offered`() {
+    fun `html player hosts without a source param are dropped`() {
         val candidates = StreamSourceResolver.candidates(
-            listOf(source("https://player.sloflix.com/embed?token=abc")),
+            listOf(
+                source("https://player.sloflix.com/embed?token=abc"),
+                source("https://sf.strp2p.com/#abc"),
+            ),
         )
 
-        assertEquals(listOf("https://player.sloflix.com/embed?token=abc"), candidates)
+        assertTrue(candidates.isEmpty())
+    }
+
+    @Test
+    fun `non source query urls are ignored`() {
+        val candidates = StreamSourceResolver.candidates(
+            listOf(source("https://player.sloflix.com/?upstream=https%3A%2F%2Fcdn.example.com%2Fa.mp4")),
+        )
+
+        assertTrue(candidates.isEmpty())
     }
 
     private fun source(url: String) = MediaSourceDto(url = url, name = "SLOSubs")

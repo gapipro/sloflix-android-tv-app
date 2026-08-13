@@ -5,9 +5,15 @@ import com.sloflix.tv.domain.model.StreamInfo
 import com.sloflix.tv.domain.repo.PlaybackRepository
 import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
+import com.sloflix.tv.domain.settings.AppLanguage
+import com.sloflix.tv.domain.settings.LanguageStore
+import com.sloflix.tv.ui.i18n.SlovenianStrings
 import java.io.IOException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -102,7 +108,7 @@ class PlayerViewModelTest {
     }
 
     @Test
-    fun `stream network failure shows offline message`() = runTest {
+    fun `stream network failure shows playback failed message`() = runTest {
         val repository = FakePlaybackRepository(
             streamResult = Result.failure(IOException("connection reset")),
         )
@@ -112,7 +118,7 @@ class PlayerViewModelTest {
         advanceUntilIdle()
 
         assertEquals(
-            PlayerUiState.Error("You’re offline. Check your connection and try again."),
+            PlayerUiState.Error(SlovenianStrings.playbackFailed),
             viewModel.uiState.value,
         )
     }
@@ -123,6 +129,7 @@ class PlayerViewModelTest {
     ) = PlayerViewModel(
         playbackRepository = repository,
         sessionStore = FakeSessionStore(Session("token")),
+        languageStore = FakeLanguageStore(),
         dispatcher = dispatcher,
     )
 
@@ -153,6 +160,9 @@ private class FakePlaybackRepository(
         session: Session,
         titleId: String,
     ): Result<PlaybackProgress?> = error("Not used")
+
+    override suspend fun clearProgress(session: Session, titleId: String): Result<Unit> =
+        error("Not used")
 }
 
 private class FakeSessionStore(
@@ -161,4 +171,15 @@ private class FakeSessionStore(
     override suspend fun get(): Session? = session
     override suspend fun set(session: Session) = Unit
     override suspend fun clear() = Unit
+}
+
+private class FakeLanguageStore(
+    initial: AppLanguage = AppLanguage.Default,
+) : LanguageStore {
+    private val mutableLanguage = MutableStateFlow(initial)
+    override val language: Flow<AppLanguage> = mutableLanguage.asStateFlow()
+    override suspend fun get(): AppLanguage = mutableLanguage.value
+    override suspend fun set(language: AppLanguage) {
+        mutableLanguage.value = language
+    }
 }

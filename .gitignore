@@ -6,3 +6,24 @@ local.properties
 build/
 app/build/
 .local/
+
+# Build / package artifacts
+*.apk
+*.ap_
+*.aab
+*.idsig
+/sloflix-tv*.apk
+
+# Signing
+*.jks
+*.keystore
+
+# Local screenshots (do not publish by accident)
+sloflix_shot.png
+sloflix_home.png
+sloflix_player.png
+
+# Captures / OS junk
+*.hprof
+.DS_Store
+captures/

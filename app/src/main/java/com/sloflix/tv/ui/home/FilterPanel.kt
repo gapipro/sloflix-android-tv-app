@@ -1,5 +1,7 @@
 package com.sloflix.tv.ui.home
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,21 +29,37 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Border
 import androidx.tv.material3.Button
+import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.sloflix.tv.domain.model.FilterState
+import com.sloflix.tv.ui.TestTags
+import com.sloflix.tv.ui.components.forceShowSoftKeyboard
+import com.sloflix.tv.ui.components.hideSoftKeyboard
+import com.sloflix.tv.ui.i18n.LocalStrings
 
 private val PanelBackground = Color(0xFF141923)
 private val FieldBackground = Color(0xFF090C12)
-private val Accent = Color(0xFFE52B3D)
+private val Accent = Color(0xFFE50913)
 private val SecondaryText = Color(0xFFC5CBD6)
 
 @Composable
 fun FilterPanel(
     filter: FilterState,
-    onQueryChanged: (String) -> Unit,
     onGenreToggle: (String) -> Unit,
     onYearSelected: (Int?) -> Unit,
     onTypeSelected: (Int?) -> Unit,
@@ -50,6 +68,7 @@ fun FilterPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = LocalStrings.current
     val closeFocus = remember { FocusRequester() }
 
     LaunchedEffect(Unit) {
@@ -61,13 +80,14 @@ fun FilterPanel(
             .width(420.dp)
             .fillMaxHeight()
             .background(PanelBackground)
-            .padding(horizontal = 32.dp),
+            .padding(horizontal = 32.dp)
+            .testTag(TestTags.FilterPanel),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item {
             Text(
-                text = "Filters",
+                text = strings.filters,
                 style = MaterialTheme.typography.headlineMedium,
                 color = Color.White,
             )
@@ -76,36 +96,37 @@ fun FilterPanel(
                 onClick = onClose,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .focusRequester(closeFocus),
+                    .focusRequester(closeFocus)
+                    .testTag(TestTags.FilterClose),
             ) {
-                Text("Close")
+                Text(strings.close)
             }
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onClear,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Clear filters")
+                Text(strings.clearFilters)
             }
-            Spacer(Modifier.height(24.dp))
-            FilterQueryField(
-                value = filter.query.orEmpty(),
-                onValueChange = onQueryChanged,
-            )
         }
 
         filter.availableTypes.takeIf { it.isNotEmpty() }?.let { types ->
-            item { FilterHeading("Type") }
+            item { FilterHeading(strings.type) }
             item {
                 FilterChoice(
-                    label = "All types",
+                    label = strings.allTypes,
                     selected = filter.selectedType == null,
                     onClick = { onTypeSelected(null) },
                 )
             }
             items(types, key = { it.first }) { (id, label) ->
+                val localized = when (id) {
+                    1 -> strings.movies
+                    2 -> strings.series
+                    else -> label
+                }
                 FilterChoice(
-                    label = label,
+                    label = localized,
                     selected = filter.selectedType == id,
                     onClick = { onTypeSelected(id) },
                 )
@@ -113,7 +134,7 @@ fun FilterPanel(
         }
 
         filter.availableGenres.takeIf { it.isNotEmpty() }?.let { genres ->
-            item { FilterHeading("Genres") }
+            item { FilterHeading(strings.genres) }
             items(genres, key = { it.first }) { (id, label) ->
                 FilterChoice(
                     label = label,
@@ -124,10 +145,10 @@ fun FilterPanel(
         }
 
         filter.availableYears.takeIf { it.isNotEmpty() }?.let { years ->
-            item { FilterHeading("Year") }
+            item { FilterHeading(strings.year) }
             item {
                 FilterChoice(
-                    label = "Any year",
+                    label = strings.anyYear,
                     selected = filter.selectedYear == null,
                     onClick = { onYearSelected(null) },
                 )
@@ -142,10 +163,10 @@ fun FilterPanel(
         }
 
         filter.availableSorts.takeIf { it.isNotEmpty() }?.let { sorts ->
-            item { FilterHeading("Sort by") }
+            item { FilterHeading(strings.sortBy) }
             item {
                 FilterChoice(
-                    label = "Default",
+                    label = strings.defaultSort,
                     selected = filter.sortBy == null,
                     onClick = { onSortSelected(null) },
                 )
@@ -186,39 +207,96 @@ private fun FilterChoice(
 }
 
 @Composable
-private fun FilterQueryField(
+fun HomeSearchField(
     value: String,
     onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    // D-pad focus alone must not open the IME. Edit only after OK/click.
+    var isEditing by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
-    Column {
-        Text(
-            text = "Search",
-            style = MaterialTheme.typography.titleMedium,
-            color = SecondaryText,
-        )
-        Spacer(Modifier.height(8.dp))
+    var textHadFocus by remember { mutableStateOf(false) }
+    var restoreShellFocus by remember { mutableStateOf(false) }
+    val textFocus = remember { FocusRequester() }
+    val shellFocus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val view = LocalView.current
+    val strings = LocalStrings.current
+    val placeholder = strings.searchTitles
+
+    fun handleBack(): Boolean {
+        return when {
+            isEditing -> {
+                restoreShellFocus = true
+                isEditing = false
+                hideSoftKeyboard(view, keyboard)
+                true
+            }
+            isFocused -> {
+                focusManager.clearFocus()
+                true
+            }
+            else -> false
+        }
+    }
+
+    BackHandler(enabled = isEditing || isFocused) {
+        handleBack()
+    }
+
+    val backKeyModifier = Modifier.onPreviewKeyEvent { event ->
+        if (event.type == KeyEventType.KeyDown && event.key == Key.Back) {
+            handleBack()
+        } else {
+            false
+        }
+    }
+
+    LaunchedEffect(isEditing) {
+        if (isEditing) {
+            textHadFocus = false
+            forceShowSoftKeyboard(view, textFocus, keyboard)
+        } else {
+            textHadFocus = false
+            hideSoftKeyboard(view, keyboard)
+            if (restoreShellFocus) {
+                shellFocus.requestFocus()
+                restoreShellFocus = false
+            }
+        }
+    }
+
+    if (isEditing) {
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
             singleLine = true,
             textStyle = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
             cursorBrush = SolidColor(Accent),
-            modifier = Modifier
-                .fillMaxWidth()
-                .onFocusChanged { isFocused = it.isFocused }
+            modifier = modifier
+                .then(backKeyModifier)
+                .focusRequester(textFocus)
+                .onFocusChanged { focusState ->
+                    isFocused = focusState.isFocused
+                    if (focusState.isFocused) {
+                        textHadFocus = true
+                    } else if (textHadFocus) {
+                        isEditing = false
+                    }
+                }
                 .background(FieldBackground, RoundedCornerShape(8.dp))
                 .border(
                     width = 2.dp,
-                    color = if (isFocused) Accent else Color(0xFF596274),
+                    color = Accent,
                     shape = RoundedCornerShape(8.dp),
                 )
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             decorationBox = { innerTextField ->
                 Box {
                     if (value.isEmpty()) {
                         Text(
-                            text = "Title name",
+                            text = placeholder,
                             style = MaterialTheme.typography.bodyLarge,
                             color = Color(0xFF8E98AA),
                         )
@@ -227,5 +305,37 @@ private fun FilterQueryField(
                 }
             },
         )
+    } else {
+        val fieldShape = RoundedCornerShape(8.dp)
+        val idleBorder = Border(BorderStroke(2.dp, Color(0xFF596274)), shape = fieldShape)
+        val accentBorder = Border(BorderStroke(2.dp, Accent), shape = fieldShape)
+        Surface(
+            onClick = { isEditing = true },
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.05f),
+            border = ClickableSurfaceDefaults.border(
+                border = idleBorder,
+                focusedBorder = accentBorder,
+                pressedBorder = accentBorder,
+            ),
+            shape = ClickableSurfaceDefaults.shape(shape = fieldShape),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = FieldBackground,
+                focusedContainerColor = FieldBackground,
+                pressedContainerColor = FieldBackground,
+            ),
+            modifier = modifier
+                .then(backKeyModifier)
+                .focusRequester(shellFocus)
+                .onFocusChanged { isFocused = it.isFocused },
+        ) {
+            Text(
+                text = value.ifEmpty { placeholder },
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (value.isEmpty()) Color(0xFF8E98AA) else Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            )
+        }
     }
 }

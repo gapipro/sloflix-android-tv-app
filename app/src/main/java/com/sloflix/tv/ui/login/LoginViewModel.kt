@@ -32,6 +32,7 @@ data class LoginUiState(
 
 sealed interface LoginEvent {
     data object NavigateHome : LoginEvent
+    data object SignedOut : LoginEvent
 }
 
 class LoginViewModel(
@@ -69,8 +70,18 @@ class LoginViewModel(
             when (authRepository.validateSession(session)) {
                 // An unreachable server says nothing about the session, so the stored one is kept
                 // and Home decides what it can show offline.
-                SessionValidity.Valid, SessionValidity.Unverified ->
-                    mutableUiState.update { it.copy(destination = SessionDestination.Home) }
+                SessionValidity.Valid, SessionValidity.Unverified -> {
+                    val resolved = session.withResolvedUsername()
+                    if (resolved.username != session.username) {
+                        sessionStore.set(resolved)
+                    }
+                    mutableUiState.update {
+                        it.copy(
+                            destination = SessionDestination.Home,
+                            username = resolved.username.orEmpty(),
+                        )
+                    }
+                }
                 SessionValidity.Invalid -> {
                     sessionStore.clear()
                     mutableUiState.update {
@@ -97,6 +108,8 @@ class LoginViewModel(
                         it.copy(
                             isLoading = false,
                             destination = SessionDestination.Home,
+                            username = session.username?.takeIf { name -> name.isNotBlank() }
+                                ?: credentials.username,
                         )
                     }
                     eventChannel.send(LoginEvent.NavigateHome)
@@ -109,6 +122,14 @@ class LoginViewModel(
                         )
                     }
                 }
+        }
+    }
+
+    fun signOut() {
+        viewModelScope.launch(dispatcher) {
+            sessionStore.clear()
+            mutableUiState.value = LoginUiState(destination = SessionDestination.Login)
+            eventChannel.send(LoginEvent.SignedOut)
         }
     }
 }

@@ -2,6 +2,8 @@ package com.sloflix.tv.ui.details
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.sloflix.tv.domain.model.EpisodeSummary
+import com.sloflix.tv.domain.model.MediaKind
 import com.sloflix.tv.domain.model.TitleDetails
 import com.sloflix.tv.domain.repo.CatalogRepository
 import com.sloflix.tv.domain.repo.PlaybackRepository
@@ -10,17 +12,26 @@ import com.sloflix.tv.ui.components.UiState
 import com.sloflix.tv.ui.components.toUserMessage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class DetailsContent(
+    val requestId: String,
     val title: TitleDetails,
     val resumePositionMs: Long,
+    val selectedSeason: Int? = null,
+    val episodes: List<EpisodeSummary> = emptyList(),
+    val episodesLoading: Boolean = false,
 ) {
     val canResume: Boolean
-        get() = resumePositionMs > 0
+        get() = resumePositionMs > 0 && !title.isSeriesUi
+
+    val isSeries: Boolean
+        get() = title.isSeriesUi
 }
 
 class DetailsViewModel(
@@ -34,6 +45,7 @@ class DetailsViewModel(
 
     private var titleId: String? = null
     private var isLoading = false
+    private var episodesJob: Job? = null
 
     fun load(titleId: String) {
         if (this.titleId == titleId && mutableUiState.value is UiState.Ready) return
@@ -49,29 +61,71 @@ class DetailsViewModel(
         if (!isLoading) loadDetails(titleId)
     }
 
+    fun selectSeason(season: Int) {
+        val ready = mutableUiState.value as? UiState.Ready ?: return
+        if (ready.value.selectedSeason == season) return
+        val showId = ready.value.title.seriesShowId
+        mutableUiState.value = UiState.Ready(
+            ready.value.copy(selectedSeason = season, episodes = emptyList(), episodesLoading = true),
+        )
+        loadEpisodes(requestId = ready.value.requestId, showId = showId, season = season)
+    }
+
     private fun loadDetails(titleId: String) {
         isLoading = true
+        episodesJob?.cancel()
         mutableUiState.value = UiState.Loading
         viewModelScope.launch(dispatcher) {
             try {
                 val session = checkNotNull(sessionStore.get()) { "Your session has expired" }
-                val title = catalogRepository.details(session, titleId).getOrThrow()
-                // Details already carries `watch_time`; loading progress hits the very same endpoint,
-                // so it is only worth a request when details reported no watch time at all.
-                val resumePosition = title.resumePositionMs
-                    ?: playbackRepository
-                        .loadProgress(session, titleId)
-                        .getOrThrow()
-                        ?.positionMs
-                    ?: 0L
-                val startPosition = resumePosition.coerceAtLeast(0L)
+                var title = catalogRepository.details(session, titleId).getOrThrow()
+                var highlightSeason: Int? = null
+
+                if (title.kind == MediaKind.Episode) {
+                    highlightSeason = title.season
+                    val parentId = checkNotNull(title.parentId) { "Episode is missing its series" }
+                    val parent = catalogRepository.details(session, parentId).getOrThrow()
+                    title = parent.copy(
+                        kind = MediaKind.Show,
+                        showName = parent.name,
+                        posterUrl = parent.posterUrl ?: title.posterUrl,
+                        backdropUrl = parent.backdropUrl ?: title.backdropUrl,
+                    )
+                }
+
+                val resumePosition = if (title.isSeriesUi) {
+                    0L
+                } else {
+                    title.resumePositionMs
+                        ?: playbackRepository
+                            .loadProgress(session, titleId)
+                            .getOrThrow()
+                            ?.positionMs
+                        ?: 0L
+                }
                 if (this@DetailsViewModel.titleId != titleId) return@launch
+
+                val selectedSeason = when {
+                    highlightSeason != null -> highlightSeason
+                    title.seasons.isNotEmpty() -> title.seasons.first()
+                    else -> null
+                }
                 mutableUiState.value = UiState.Ready(
                     DetailsContent(
+                        requestId = titleId,
                         title = title,
-                        resumePositionMs = startPosition,
+                        resumePositionMs = resumePosition.coerceAtLeast(0L),
+                        selectedSeason = selectedSeason,
+                        episodesLoading = selectedSeason != null,
                     ),
                 )
+                if (selectedSeason != null) {
+                    loadEpisodes(
+                        requestId = titleId,
+                        showId = title.seriesShowId,
+                        season = selectedSeason,
+                    )
+                }
             } catch (error: Exception) {
                 if (this@DetailsViewModel.titleId != titleId) return@launch
                 mutableUiState.value = UiState.Error(
@@ -80,6 +134,45 @@ class DetailsViewModel(
             } finally {
                 if (this@DetailsViewModel.titleId == titleId) {
                     isLoading = false
+                }
+            }
+        }
+    }
+
+    private fun loadEpisodes(
+        requestId: String,
+        showId: String,
+        season: Int,
+    ) {
+        episodesJob?.cancel()
+        episodesJob = viewModelScope.launch(dispatcher) {
+            try {
+                val session = checkNotNull(sessionStore.get()) { "Your session has expired" }
+                val episodes = catalogRepository.episodes(session, showId, season).getOrThrow()
+                    .sortedBy { it.episodeIndex }
+                if (this@DetailsViewModel.titleId != requestId) return@launch
+                mutableUiState.update { state ->
+                    val ready = state as? UiState.Ready ?: return@update state
+                    if (ready.value.requestId != requestId) return@update state
+                    UiState.Ready(
+                        ready.value.copy(
+                            episodes = episodes,
+                            episodesLoading = false,
+                            selectedSeason = season,
+                        ),
+                    )
+                }
+            } catch (_: Exception) {
+                if (this@DetailsViewModel.titleId != requestId) return@launch
+                mutableUiState.update { state ->
+                    val ready = state as? UiState.Ready ?: return@update state
+                    if (ready.value.requestId != requestId) return@update state
+                    UiState.Ready(
+                        ready.value.copy(
+                            episodes = emptyList(),
+                            episodesLoading = false,
+                        ),
+                    )
                 }
             }
         }
