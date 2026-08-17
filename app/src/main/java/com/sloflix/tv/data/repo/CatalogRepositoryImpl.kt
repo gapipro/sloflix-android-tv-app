@@ -132,7 +132,7 @@ internal fun DetailsDto.toTitleDetails(): TitleDetails {
     return TitleDetails(
         id = id.toString(),
         name = name,
-        description = description,
+        description = description.orEmpty(),
         posterUrl = thumbnailUrl,
         backdropUrl = bannerUrl,
         year = year,
@@ -145,6 +145,9 @@ internal fun DetailsDto.toTitleDetails(): TitleDetails {
         season = season,
         episodeIndex = episodeIndex,
         parentId = parentMediaId?.toString(),
+        hasExoPlayback = StreamSourceResolver.candidates(sources).isNotEmpty(),
+        exoSourceLabel = StreamSourceResolver.exoSourceLabel(sources),
+        webViewSources = StreamSourceResolver.webViewEmbeds(sources),
     )
 }
 

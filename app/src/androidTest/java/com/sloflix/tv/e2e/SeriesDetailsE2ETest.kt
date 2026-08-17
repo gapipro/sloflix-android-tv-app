@@ -49,7 +49,22 @@ class SeriesDetailsE2ETest {
                 .onChildren()
                 .onFirst()
                 .performClick()
+            composeRule.waitForTag(TestTags.DetailsRoot, timeoutMs = 45_000).assertIsDisplayed()
+            composeRule.waitUntil(45_000) {
+                composeRule.onAllNodesWithTag(TestTags.DetailsPlay).fetchSemanticsNodes().isNotEmpty() ||
+                    composeRule.onAllNodesWithTag(TestTags.DetailsWebViewPlay).fetchSemanticsNodes().isNotEmpty()
+            }
+            val playTag = if (
+                composeRule.onAllNodesWithTag(TestTags.DetailsPlay).fetchSemanticsNodes().isNotEmpty()
+            ) {
+                TestTags.DetailsPlay
+            } else {
+                TestTags.DetailsWebViewPlay
+            }
+            composeRule.onNodeWithTag(playTag).performClick()
             composeRule.waitForTag(TestTags.PlayerRoot, timeoutMs = 120_000).assertIsDisplayed()
+            pressBack()
+            composeRule.waitForTag(TestTags.DetailsRoot, timeoutMs = 30_000)
             pressBack()
             composeRule.waitForTag(TestTags.DetailsRoot, timeoutMs = 30_000)
         }

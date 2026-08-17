@@ -57,6 +57,11 @@ data class SloflixStrings(
     val ccOff: String,
     val playbackFailed: String,
     val novo: String,
+    /** Fallback label when a StreamP2P source has no media_source_name. */
+    val streamP2p: String,
+    /** Fallback label when a DoodStream/Exo source has no media_source_name. */
+    val doodStream: String,
+    val source: String,
 )
 
 val LocalStrings = staticCompositionLocalOf { SlovenianStrings }
@@ -121,6 +126,9 @@ val SlovenianStrings = SloflixStrings(
     playbackFailed =
         "Predvajanje spodletelo. Če uporabljate kakršne koli uprašljive načine dostopa do interneta (VPN, Mobilni Router, Safari Browser) jih poskusite izklopiti.",
     novo = "NOVO",
+    streamP2p = "StreamP2P",
+    doodStream = "DoodStream",
+    source = "Vir",
 )
 
 val EnglishStrings = SloflixStrings(
@@ -177,4 +185,7 @@ val EnglishStrings = SloflixStrings(
     playbackFailed =
         "Playback failed. If you use any questionable internet access methods (VPN, mobile router, Safari browser), try turning them off.",
     novo = "NEW",
+    streamP2p = "StreamP2P",
+    doodStream = "DoodStream",
+    source = "Source",
 )

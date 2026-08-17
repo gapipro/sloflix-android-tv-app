@@ -9,6 +9,7 @@ import com.sloflix.tv.data.api.SloflixApi
 import com.sloflix.tv.data.api.UserAgentInterceptor
 import com.sloflix.tv.data.net.AndroidNetworkStatus
 import com.sloflix.tv.data.playback.DataStoreContinueWatchingStore
+import com.sloflix.tv.data.playback.StreamP2PClient
 import com.sloflix.tv.data.repo.AuthRepositoryImpl
 import com.sloflix.tv.data.repo.CatalogRepositoryImpl
 import com.sloflix.tv.data.repo.PlaybackRepositoryImpl
@@ -78,10 +79,13 @@ class AppContainer(
         sessionProvider = sessionProvider,
         continueWatchingStore = continueWatchingStore,
     )
+    val streamP2PClient: StreamP2PClient = StreamP2PClient(mediaOkHttpClient)
+
     val playbackRepository: PlaybackRepository = PlaybackRepositoryImpl(
         api = api,
         sessionProvider = sessionProvider,
         continueWatchingStore = continueWatchingStore,
+        streamP2PClient = streamP2PClient,
     )
 
     companion object {

@@ -10,6 +10,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,11 +77,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import okhttp3.OkHttpClient
 
-private val PlayerBackground = Color(0xFF090C12)
+private val PlayerBackground = Color.Black
 private val ControlsScrim = Color(0xCC090C12)
 private val Accent = Color(0xFFE50913)
 private const val ControllerTimeoutMs = 5_000L
 private const val SeekStepMs = 10_000L
+/** Doubling jump sizes while holding seek; capped at 5 minutes. */
+private val SeekAccelerationStepsMs = longArrayOf(
+    10_000L,
+    20_000L,
+    40_000L,
+    80_000L,
+    160_000L,
+    300_000L,
+)
+private const val SeekHoldInitialDelayMs = 400L
+private const val SeekHoldMinDelayMs = 120L
 
 @Composable
 fun PlayerScreen(
@@ -88,12 +101,13 @@ fun PlayerScreen(
     viewModel: PlayerViewModel,
     mediaOkHttpClient: OkHttpClient,
     onBack: () -> Unit,
+    streamP2pEmbedUrl: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    LaunchedEffect(viewModel, titleId) {
-        viewModel.load(titleId)
+    LaunchedEffect(viewModel, titleId, streamP2pEmbedUrl) {
+        viewModel.load(titleId, streamP2pEmbedUrl)
     }
 
     Box(
@@ -130,11 +144,13 @@ private fun PlayerContent(
     var candidateIndex by remember(streamInfo) { mutableIntStateOf(0) }
     var playbackFailed by remember(streamInfo) { mutableStateOf(false) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var controlsTick by remember { mutableIntStateOf(0) }
     var subtitlesEnabled by remember(streamInfo) { mutableStateOf(streamInfo.subtitles.isNotEmpty()) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var isPlaying by remember { mutableStateOf(true) }
-    val focusRequester = remember { FocusRequester() }
+    val rootFocusRequester = remember { FocusRequester() }
+    val playFocusRequester = remember { FocusRequester() }
     val context = LocalContext.current
     val currentUrl = candidates[candidateIndex]
     val latestControlsVisible = rememberUpdatedState(controlsVisible)
@@ -197,7 +213,7 @@ private fun PlayerContent(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying) {
+    LaunchedEffect(controlsVisible, isPlaying, controlsTick) {
         if (controlsVisible && isPlaying) {
             delay(ControllerTimeoutMs)
             if (latestControlsVisible.value) {
@@ -210,15 +226,13 @@ private fun PlayerContent(
         setSubtitlesEnabled(player, streamInfo.subtitles, subtitlesEnabled)
     }
 
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
-
-    // When the overlay (and its focusable buttons) leaves composition, reclaim focus so
-    // subsequent remote keys can show controls again.
+    // When the overlay leaves composition, reclaim focus so remote keys can show controls again.
+    // When shown, park focus on Play so D-pad L/R can reach seek and CC.
     LaunchedEffect(controlsVisible) {
-        if (!controlsVisible) {
-            focusRequester.requestFocus()
+        if (controlsVisible) {
+            playFocusRequester.requestFocus()
+        } else {
+            rootFocusRequester.requestFocus()
         }
     }
 
@@ -237,6 +251,7 @@ private fun PlayerContent(
 
     fun showControls() {
         controlsVisible = true
+        controlsTick++
     }
 
     fun togglePlayPause() {
@@ -255,20 +270,24 @@ private fun PlayerContent(
         modifier = Modifier
             .fillMaxSize()
             .testTag(TestTags.PlayerRoot)
-            .focusRequester(focusRequester)
+            .focusRequester(rootFocusRequester)
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.nativeKeyEvent.keyCode) {
                     KeyEvent.KEYCODE_DPAD_CENTER,
                     KeyEvent.KEYCODE_ENTER,
-                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
                     -> {
                         if (!controlsVisible) {
                             showControls()
+                            true
                         } else {
-                            togglePlayPause()
+                            // Let the focused control button handle OK / Enter.
+                            false
                         }
+                    }
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                        togglePlayPause()
                         true
                     }
                     KeyEvent.KEYCODE_MEDIA_PLAY -> {
@@ -282,22 +301,37 @@ private fun PlayerContent(
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_LEFT,
-                    KeyEvent.KEYCODE_MEDIA_REWIND,
+                    KeyEvent.KEYCODE_DPAD_RIGHT,
                     -> {
-                        seekBy(-SeekStepMs)
+                        // D-pad L/R navigate focus among control buttons — never seek.
+                        if (!controlsVisible) {
+                            showControls()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    KeyEvent.KEYCODE_MEDIA_REWIND,
+                    KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                    -> {
+                        seekBy(-seekStepForRepeat(event.nativeKeyEvent.repeatCount))
                         true
                     }
-                    KeyEvent.KEYCODE_DPAD_RIGHT,
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+                    KeyEvent.KEYCODE_MEDIA_NEXT,
                     -> {
-                        seekBy(SeekStepMs)
+                        seekBy(seekStepForRepeat(event.nativeKeyEvent.repeatCount))
                         true
                     }
                     KeyEvent.KEYCODE_DPAD_UP,
                     KeyEvent.KEYCODE_DPAD_DOWN,
                     -> {
-                        showControls()
-                        true
+                        if (!controlsVisible) {
+                            showControls()
+                            true
+                        } else {
+                            false
+                        }
                     }
                     KeyEvent.KEYCODE_CAPTIONS -> {
                         if (streamInfo.subtitles.isNotEmpty()) {
@@ -321,6 +355,8 @@ private fun PlayerContent(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                     useController = false
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    setShutterBackgroundColor(android.graphics.Color.BLACK)
                     isFocusable = false
                     isFocusableInTouchMode = false
                     descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
@@ -358,6 +394,13 @@ private fun PlayerContent(
                 durationMs = durationMs,
                 hasSubtitles = streamInfo.subtitles.isNotEmpty(),
                 subtitlesEnabled = subtitlesEnabled,
+                playFocusRequester = playFocusRequester,
+                onPlayPause = { togglePlayPause() },
+                onSeekBy = { deltaMs -> seekBy(deltaMs) },
+                onToggleSubtitles = {
+                    subtitlesEnabled = !subtitlesEnabled
+                    showControls()
+                },
             )
         }
 
@@ -374,6 +417,10 @@ private fun PlayerControlsOverlay(
     durationMs: Long,
     hasSubtitles: Boolean,
     subtitlesEnabled: Boolean,
+    playFocusRequester: FocusRequester,
+    onPlayPause: () -> Unit,
+    onSeekBy: (Long) -> Unit,
+    onToggleSubtitles: () -> Unit,
 ) {
     val progress = if (durationMs > 0) {
         (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
@@ -416,31 +463,38 @@ private fun PlayerControlsOverlay(
             horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CircularControlHint(
+            CircularControlButton(
                 iconRes = R.drawable.ic_seek_back,
                 label = "10",
                 contentDescription = "-10s",
+                progressiveSeekDirection = -1,
+                onSeekBy = onSeekBy,
             )
-            CircularControlHint(
+            CircularControlButton(
                 iconRes = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play,
                 contentDescription = if (isPlaying) "Pause" else "Play",
                 emphasized = true,
+                onClick = onPlayPause,
+                modifier = Modifier.focusRequester(playFocusRequester),
             )
-            CircularControlHint(
+            CircularControlButton(
                 iconRes = R.drawable.ic_seek_forward,
                 label = "10",
                 contentDescription = "+10s",
+                progressiveSeekDirection = 1,
+                onSeekBy = onSeekBy,
             )
             if (hasSubtitles) {
-                CircularControlHint(
+                CircularControlButton(
                     iconRes = R.drawable.ic_cc,
                     contentDescription = if (subtitlesEnabled) "CC On" else "CC Off",
                     dimmed = !subtitlesEnabled,
+                    onClick = onToggleSubtitles,
                 )
             }
         }
         Text(
-            text = "← / →  10s",
+            text = "Hold ◀ ▶ to scrub faster",
             color = Color.White.copy(alpha = 0.55f),
             style = MaterialTheme.typography.labelMedium,
         )
@@ -448,33 +502,83 @@ private fun PlayerControlsOverlay(
 }
 
 @Composable
-private fun CircularControlHint(
+private fun CircularControlButton(
     iconRes: Int,
     contentDescription: String,
+    modifier: Modifier = Modifier,
     label: String? = null,
     emphasized: Boolean = false,
     dimmed: Boolean = false,
+    progressiveSeekDirection: Int = 0,
+    onSeekBy: ((Long) -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     val size = if (emphasized) 64.dp else 52.dp
     val iconSize = if (emphasized) 30.dp else 24.dp
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(size)
-                .background(
-                    color = if (emphasized) Accent else Color(0xFF1B2230),
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val latestOnSeekBy = rememberUpdatedState(onSeekBy)
+    var acceleratedSeek by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isPressed, progressiveSeekDirection) {
+        if (!isPressed || progressiveSeekDirection == 0) return@LaunchedEffect
+        val seek = latestOnSeekBy.value ?: return@LaunchedEffect
+        // Immediate ±10s on press (covers short taps). Further ticks double while held.
+        seek(SeekStepMs * progressiveSeekDirection)
+        acceleratedSeek = true
+        delay(SeekHoldInitialDelayMs)
+        var stepIndex = 1
+        var tickDelayMs = 300L
+        while (isActive) {
+            seek(SeekAccelerationStepsMs[stepIndex] * progressiveSeekDirection)
+            if (stepIndex < SeekAccelerationStepsMs.lastIndex) {
+                stepIndex++
+            }
+            delay(tickDelayMs)
+            tickDelayMs = (tickDelayMs * 3 / 4).coerceAtLeast(SeekHoldMinDelayMs)
+        }
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier,
+    ) {
+        Surface(
+            onClick = {
+                when {
+                    progressiveSeekDirection != 0 -> {
+                        val seek = latestOnSeekBy.value
+                        if (seek != null && !acceleratedSeek) {
+                            seek(SeekStepMs * progressiveSeekDirection)
+                        }
+                        acceleratedSeek = false
+                    }
+                    onClick != null -> onClick()
+                }
+            },
+            shape = ClickableSurfaceDefaults.shape(shape = CircleShape),
+            colors = ClickableSurfaceDefaults.colors(
+                containerColor = if (emphasized) Accent else Color(0xFF1B2230),
+                focusedContainerColor = if (emphasized) Accent else Color(0xFF2A3344),
+                pressedContainerColor = Accent.copy(alpha = 0.85f),
+            ),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1.08f),
+            interactionSource = interactionSource,
+            modifier = Modifier.size(size),
         ) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
-                colorFilter = ColorFilter.tint(
-                    if (dimmed) Color.White.copy(alpha = 0.45f) else Color.White,
-                ),
-                modifier = Modifier.size(iconSize),
-            )
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(iconRes),
+                    contentDescription = contentDescription,
+                    colorFilter = ColorFilter.tint(
+                        if (dimmed) Color.White.copy(alpha = 0.45f) else Color.White,
+                    ),
+                    modifier = Modifier.size(iconSize),
+                )
+            }
         }
         if (label != null) {
             Spacer(modifier = Modifier.height(4.dp))
@@ -485,6 +589,19 @@ private fun CircularControlHint(
             )
         }
     }
+}
+
+private fun seekStepForRepeat(repeatCount: Int): Long {
+    // Mirror hold acceleration for MEDIA_REWIND / MEDIA_FAST_FORWARD key repeats.
+    val index = when {
+        repeatCount < 2 -> 0
+        repeatCount < 5 -> 1
+        repeatCount < 9 -> 2
+        repeatCount < 14 -> 3
+        repeatCount < 20 -> 4
+        else -> SeekAccelerationStepsMs.lastIndex
+    }
+    return SeekAccelerationStepsMs[index]
 }
 
 private fun formatTime(ms: Long): String {

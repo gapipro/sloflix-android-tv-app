@@ -3,6 +3,7 @@ package com.sloflix.tv.data.repo
 import com.sloflix.tv.data.api.MutableSessionProvider
 import com.sloflix.tv.data.api.ProgressRequest
 import com.sloflix.tv.data.api.SloflixApi
+import com.sloflix.tv.data.playback.StreamP2PClient
 import com.sloflix.tv.domain.model.ContinueWatchingEntry
 import com.sloflix.tv.domain.model.PlaybackProgress
 import com.sloflix.tv.domain.model.StreamInfo
@@ -14,6 +15,7 @@ class PlaybackRepositoryImpl(
     private val api: SloflixApi,
     private val sessionProvider: MutableSessionProvider,
     private val continueWatchingStore: ContinueWatchingStore,
+    private val streamP2PClient: StreamP2PClient? = null,
     private val clockMs: () -> Long = { System.currentTimeMillis() },
 ) : PlaybackRepository {
     override suspend fun stream(session: Session, titleId: String): Result<StreamInfo> =
@@ -31,6 +33,12 @@ class PlaybackRepositoryImpl(
                 subtitles = StreamSourceResolver.subtitles(details.sources),
             )
         }
+
+    override suspend fun resolveStreamP2P(embedUrl: String): Result<StreamInfo> {
+        val client = streamP2PClient
+            ?: return Result.failure(IllegalStateException("StreamP2P client is not configured"))
+        return client.resolve(embedUrl)
+    }
 
     companion object {
         val PlayerPlaybackHeaders = mapOf(

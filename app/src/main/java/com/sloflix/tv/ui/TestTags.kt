@@ -32,11 +32,16 @@ object TestTags {
     const val SettingsClose = "settings_close"
 
     const val DetailsPlay = "details_play"
+    const val DetailsWebViewPlay = "details_webview_play"
+    const val DetailsSourcePicker = "details_source_picker"
+    const val DetailsSourceOption = "details_source_option"
     const val DetailsRoot = "details_root"
     const val DetailsSeasonChip = "details_season_chip"
     const val DetailsEpisodes = "details_episodes"
+    const val DetailsParentShow = "details_parent_show"
 
     const val PlayerRoot = "player_root"
+    const val WebViewPlayerRoot = "webview_player_root"
     const val PosterPrefix = "poster_"
 
     fun poster(titleId: String) = "$PosterPrefix$titleId"

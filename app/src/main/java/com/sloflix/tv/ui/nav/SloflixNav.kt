@@ -40,6 +40,7 @@ import com.sloflix.tv.ui.login.LoginViewModel
 import com.sloflix.tv.ui.login.SessionDestination
 import com.sloflix.tv.ui.player.PlayerScreen
 import com.sloflix.tv.ui.player.PlayerViewModel
+import com.sloflix.tv.ui.player.WebViewPlayerScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -48,6 +49,9 @@ private const val LoginRoute = "login"
 private const val HomeRoute = "home"
 private const val DetailsRoute = "details/{id}"
 private const val PlayerRoute = "player/{id}?startPosition={startPosition}"
+private const val WebViewPlayerRoute = "webviewPlayer"
+private const val WebViewUrlKey = "webview_url"
+private const val StreamP2pEmbedKey = "streamp2p_embed"
 private const val MinSplashMs = 1_000L
 
 @Composable
@@ -196,6 +200,12 @@ private fun SloflixNavContent(
                 state = displayState,
                 onRetry = detailsViewModel::retry,
                 onSeasonSelected = detailsViewModel::selectSeason,
+                onEpisodeClick = { episodeId ->
+                    navController.navigate("details/$episodeId")
+                },
+                onOpenParentShow = { parentId ->
+                    navController.navigate("details/$parentId")
+                },
                 onPlay = { id, startPositionMs ->
                     val route = buildString {
                         append("player/$id")
@@ -203,7 +213,39 @@ private fun SloflixNavContent(
                     }
                     navController.navigate(route)
                 },
+                onPlayWebView = { url ->
+                    // Kept for fallback / tests; StreamP2P buttons use onPlayStreamP2P.
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(WebViewUrlKey, url)
+                    navController.navigate(WebViewPlayerRoute)
+                },
+                onPlayStreamP2P = { titleId, embedUrl, startPositionMs ->
+                    // Works for movies and episode ids; PlayerViewModel decrypts via StreamP2PClient.
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(StreamP2pEmbedKey, embedUrl)
+                    val route = buildString {
+                        append("player/$titleId")
+                        startPositionMs?.let { append("?startPosition=$it") }
+                    }
+                    navController.navigate(route)
+                },
             )
+        }
+        composable(WebViewPlayerRoute) {
+            val url = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(WebViewUrlKey)
+                .orEmpty()
+            if (url.isBlank()) {
+                LaunchedEffect(Unit) { navController.popBackStack() }
+            } else {
+                WebViewPlayerScreen(
+                    url = url,
+                    onBack = navController::popBackStack,
+                )
+            }
         }
         composable(
             route = PlayerRoute,
@@ -214,11 +256,15 @@ private fun SloflixNavContent(
                 },
             ),
         ) { backStackEntry ->
+            val embedUrl = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.remove<String>(StreamP2pEmbedKey)
             PlayerScreen(
                 titleId = backStackEntry.arguments?.getString("id").orEmpty(),
                 startPositionMs = backStackEntry.arguments?.getLong("startPosition") ?: 0L,
                 viewModel = playerViewModel,
                 mediaOkHttpClient = mediaOkHttpClient,
+                streamP2pEmbedUrl = embedUrl,
                 onBack = navController::popBackStack,
             )
         }

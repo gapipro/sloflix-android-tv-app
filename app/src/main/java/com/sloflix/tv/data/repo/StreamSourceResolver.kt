@@ -2,6 +2,7 @@ package com.sloflix.tv.data.repo
 
 import com.sloflix.tv.data.api.MediaSourceDto
 import com.sloflix.tv.domain.model.SubtitleTrack
+import com.sloflix.tv.domain.model.WebViewPlaybackSource
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -13,11 +14,14 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
  * `https://www.sloflix.com/subtitles/`.
  *
  * HTML player / embed pages themselves are not ExoPlayer-compatible and must
- * never be offered as candidates.
+ * never be offered as direct candidates. StreamP2P embeds are listed separately
+ * and resolved via [com.sloflix.tv.data.playback.StreamP2PClient] to HLS.
  */
 internal object StreamSourceResolver {
     private const val PlayerHost = "player.sloflix.com"
     private const val SubtitleBaseUrl = "https://www.sloflix.com/subtitles/"
+    private const val DefaultStreamP2pLabel = "StreamP2P"
+    private const val DefaultDoodStreamLabel = "DoodStream"
 
     /** Hosts that serve interactive HTML players, not progressive media. */
     private val HtmlPlayerHosts = setOf(
@@ -38,6 +42,41 @@ internal object StreamSourceResolver {
                 url.toString()
             }
         }.distinct()
+
+    /** Short provider name for ExoPlayer/Dood sources, e.g. `DoodStream`. */
+    fun exoSourceLabel(sources: List<MediaSourceDto>): String? {
+        val labeled = sources.firstOrNull { source ->
+            candidates(listOf(source)).isNotEmpty()
+        } ?: return null
+        return shortSourceLabel(labeled.name, DefaultDoodStreamLabel)
+    }
+
+    /** Short provider name for buttons, e.g. `SLOSubs (DoodStream)` → `DoodStream`. */
+    fun shortSourceLabel(raw: String?, fallback: String): String {
+        val name = raw?.trim().orEmpty()
+        when {
+            name.contains("StreamP2P", ignoreCase = true) -> return DefaultStreamP2pLabel
+            name.contains("DoodStream", ignoreCase = true) -> return DefaultDoodStreamLabel
+        }
+        val inner = Regex("""\(([^)]+)\)""").findAll(name).lastOrNull()?.groupValues?.getOrNull(1)?.trim()
+        if (!inner.isNullOrEmpty()) return inner
+        return name.ifBlank { fallback }
+    }
+
+    /**
+     * StreamP2P embed URLs resolved to HLS via decrypt (not played as HTML).
+     * Matched when the host contains `strp2p.com` / `playerp2p.com` or the
+     * source name mentions StreamP2P.
+     */
+    fun webViewEmbeds(sources: List<MediaSourceDto>): List<WebViewPlaybackSource> =
+        sources.mapNotNull { source ->
+            val url = source.url.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            if (!isStreamP2pSource(source.name, url)) return@mapNotNull null
+            WebViewPlaybackSource(
+                label = shortSourceLabel(source.name, DefaultStreamP2pLabel),
+                url = url,
+            )
+        }.distinctBy { it.url }
 
     /**
      * Prefer an explicit `subtitle=` URL on the player page (web player), then fall back to
@@ -94,5 +133,11 @@ internal object StreamSourceResolver {
     private fun isHtmlPlayerHost(host: String): Boolean {
         val lower = host.lowercase()
         return HtmlPlayerHosts.any { lower == it || lower.endsWith(".$it") }
+    }
+
+    private fun isStreamP2pSource(name: String?, url: String): Boolean {
+        if (name?.contains("StreamP2P", ignoreCase = true) == true) return true
+        val host = url.toHttpUrlOrNull()?.host?.lowercase() ?: return false
+        return host.contains("strp2p.com") || host.contains("playerp2p.com")
     }
 }

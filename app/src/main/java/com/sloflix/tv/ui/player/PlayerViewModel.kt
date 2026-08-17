@@ -43,7 +43,7 @@ class PlayerViewModel(
     private var progressJob: Job? = null
     private var finalProgress: PlaybackProgress? = null
 
-    fun load(titleId: String) {
+    fun load(titleId: String, streamP2pEmbedUrl: String? = null) {
         this.titleId = titleId
         session = null
         finalProgress = null
@@ -52,7 +52,11 @@ class PlayerViewModel(
         viewModelScope.launch(dispatcher) {
             try {
                 val currentSession = checkNotNull(sessionStore.get()) { "Your session has expired" }
-                val streamInfo = playbackRepository.stream(currentSession, titleId).getOrThrow()
+                val streamInfo = if (!streamP2pEmbedUrl.isNullOrBlank()) {
+                    playbackRepository.resolveStreamP2P(streamP2pEmbedUrl).getOrThrow()
+                } else {
+                    playbackRepository.stream(currentSession, titleId).getOrThrow()
+                }
                 if (this@PlayerViewModel.titleId != titleId) return@launch
                 session = currentSession
                 mutableUiState.value = PlayerUiState.Ready(streamInfo)

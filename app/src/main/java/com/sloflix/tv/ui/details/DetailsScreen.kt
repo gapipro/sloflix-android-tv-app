@@ -1,5 +1,6 @@
 package com.sloflix.tv.ui.details
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -11,9 +12,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -21,7 +27,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +51,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import com.sloflix.tv.domain.model.EpisodeSummary
+import com.sloflix.tv.domain.model.MediaKind
 import com.sloflix.tv.domain.model.TitleSummary
 import com.sloflix.tv.ui.TestTags
 import com.sloflix.tv.ui.components.PosterCard
@@ -48,6 +59,7 @@ import com.sloflix.tv.ui.components.PosterCardSlotHeight
 import com.sloflix.tv.ui.components.SloflixLogo
 import com.sloflix.tv.ui.components.UiState
 import com.sloflix.tv.ui.i18n.LocalStrings
+import com.sloflix.tv.ui.i18n.SloflixStrings
 
 private val Background = Color(0xFF090C12)
 private val Accent = Color(0xFFE50913)
@@ -59,7 +71,12 @@ fun DetailsScreen(
     state: UiState<DetailsContent>,
     onRetry: () -> Unit,
     onPlay: (titleId: String, startPositionMs: Long?) -> Unit,
+    onPlayWebView: (url: String) -> Unit = {},
+    onPlayStreamP2P: (titleId: String, embedUrl: String, startPositionMs: Long?) -> Unit =
+        { _, url, _ -> onPlayWebView(url) },
     onSeasonSelected: (Int) -> Unit = {},
+    onEpisodeClick: (String) -> Unit = {},
+    onOpenParentShow: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -73,7 +90,10 @@ fun DetailsScreen(
             is UiState.Ready -> DetailsReady(
                 content = state.value,
                 onPlay = onPlay,
+                onPlayStreamP2P = onPlayStreamP2P,
                 onSeasonSelected = onSeasonSelected,
+                onEpisodeClick = onEpisodeClick,
+                onOpenParentShow = onOpenParentShow,
             )
         }
     }
@@ -83,7 +103,10 @@ fun DetailsScreen(
 private fun DetailsReady(
     content: DetailsContent,
     onPlay: (titleId: String, startPositionMs: Long?) -> Unit,
+    onPlayStreamP2P: (titleId: String, embedUrl: String, startPositionMs: Long?) -> Unit,
     onSeasonSelected: (Int) -> Unit,
+    onEpisodeClick: (String) -> Unit,
+    onOpenParentShow: (String) -> Unit,
 ) {
     val primaryFocus = remember { FocusRequester() }
     val episodeFocus = remember { FocusRequester() }
@@ -137,26 +160,29 @@ private fun DetailsReady(
                 content = content,
                 seasonFocus = primaryFocus,
                 episodeFocus = episodeFocus,
-                onPlay = onPlay,
                 onSeasonSelected = onSeasonSelected,
+                onEpisodeClick = onEpisodeClick,
             )
         } else {
-            MovieDetails(
+            TitlePlaybackDetails(
                 content = content,
                 primaryFocus = primaryFocus,
                 onPlay = onPlay,
+                onPlayStreamP2P = onPlayStreamP2P,
+                onOpenParentShow = onOpenParentShow,
             )
         }
     }
 }
 
 @Composable
-private fun MovieDetails(
+private fun TitlePlaybackDetails(
     content: DetailsContent,
     primaryFocus: FocusRequester,
     onPlay: (titleId: String, startPositionMs: Long?) -> Unit,
+    onPlayStreamP2P: (titleId: String, embedUrl: String, startPositionMs: Long?) -> Unit,
+    onOpenParentShow: (String) -> Unit,
 ) {
-    val strings = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -165,32 +191,166 @@ private fun MovieDetails(
     ) {
         Poster(
             url = content.title.posterUrl,
-            title = content.title.name,
+            title = content.title.displayName,
         )
         Spacer(Modifier.width(42.dp))
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.Center,
         ) {
-            TitleHeader(content)
+            TitleHeader(
+                content = content,
+                onOpenParentShow = onOpenParentShow,
+            )
             Spacer(Modifier.height(30.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Button(
-                    onClick = {
-                        onPlay(
-                            content.title.id,
-                            content.resumePositionMs.takeIf { content.canResume },
-                        )
-                    },
+            PlaybackActions(
+                content = content,
+                primaryFocus = primaryFocus,
+                onPlay = onPlay,
+                onPlayStreamP2P = onPlayStreamP2P,
+            )
+        }
+    }
+}
+
+private data class DetailsPlaybackSource(
+    val id: String,
+    val label: String,
+    val streamP2pUrl: String?,
+)
+
+private fun playbackSources(content: DetailsContent, strings: SloflixStrings): List<DetailsPlaybackSource> {
+    val title = content.title
+    val includeExo = title.hasExoPlayback || title.webViewSources.isEmpty()
+    return buildList {
+        if (includeExo) {
+            add(
+                DetailsPlaybackSource(
+                    id = "exo",
+                    label = title.exoSourceLabel ?: strings.doodStream,
+                    streamP2pUrl = null,
+                ),
+            )
+        }
+        title.webViewSources.forEachIndexed { index, source ->
+            add(
+                DetailsPlaybackSource(
+                    id = "p2p-$index",
+                    label = source.label.ifBlank { strings.streamP2p },
+                    streamP2pUrl = source.url,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlaybackActions(
+    content: DetailsContent,
+    primaryFocus: FocusRequester,
+    onPlay: (titleId: String, startPositionMs: Long?) -> Unit,
+    onPlayStreamP2P: (titleId: String, embedUrl: String, startPositionMs: Long?) -> Unit,
+) {
+    val strings = LocalStrings.current
+    val sources = remember(content.title.id, content.title.hasExoPlayback, content.title.webViewSources) {
+        playbackSources(content, strings)
+    }
+    var selectedIndex by remember(content.title.id) { mutableIntStateOf(0) }
+    val selected = sources.getOrNull(selectedIndex.coerceIn(0, (sources.size - 1).coerceAtLeast(0)))
+
+    fun play(startPositionMs: Long?) {
+        val source = selected ?: return
+        val embed = source.streamP2pUrl
+        if (embed != null) {
+            onPlayStreamP2P(content.title.id, embed, startPositionMs)
+        } else {
+            onPlay(content.title.id, startPositionMs)
+        }
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Button(
+            onClick = { play(content.resumePositionMs.takeIf { content.canResume }) },
+            modifier = Modifier
+                .focusRequester(primaryFocus)
+                .testTag(TestTags.DetailsPlay),
+        ) {
+            Text(if (content.canResume) strings.resume else strings.play)
+        }
+        if (content.canResume) {
+            Button(onClick = { play(null) }) {
+                Text(strings.playFromBeginning)
+            }
+        }
+        if (sources.size > 1 && selected != null) {
+            SourcePicker(
+                sources = sources,
+                selectedIndex = selectedIndex.coerceIn(0, sources.lastIndex),
+                onSelected = { selectedIndex = it },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SourcePicker(
+    sources: List<DetailsPlaybackSource>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit,
+) {
+    val strings = LocalStrings.current
+    var expanded by remember { mutableStateOf(false) }
+    var pickerHeightPx by remember { mutableIntStateOf(0) }
+    val optionFocus = remember { FocusRequester() }
+    BackHandler(enabled = expanded) { expanded = false }
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            kotlinx.coroutines.android.awaitFrame()
+            runCatching { optionFocus.requestFocus() }
+        }
+    }
+
+    Box {
+        Button(
+            onClick = { expanded = !expanded },
+            modifier = Modifier
+                .onGloballyPositioned { pickerHeightPx = it.size.height }
+                .testTag(TestTags.DetailsSourcePicker),
+        ) {
+            Text("${strings.source}: ${sources[selectedIndex].label} ${if (expanded) "▴" else "▾"}")
+        }
+        if (expanded) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, pickerHeightPx),
+                onDismissRequest = { expanded = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Column(
                     modifier = Modifier
-                        .focusRequester(primaryFocus)
-                        .testTag(TestTags.DetailsPlay),
+                        .width(260.dp)
+                        .background(Color(0xFF171C25), RoundedCornerShape(12.dp))
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Text(if (content.canResume) strings.resume else strings.play)
-                }
-                if (content.canResume) {
-                    Button(onClick = { onPlay(content.title.id, null) }) {
-                        Text(strings.playFromBeginning)
+                    sources.forEachIndexed { index, source ->
+                        val selected = index == selectedIndex
+                        Button(
+                            onClick = {
+                                onSelected(index)
+                                expanded = false
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 52.dp)
+                                .then(if (selected) Modifier.focusRequester(optionFocus) else Modifier)
+                                .testTag("${TestTags.DetailsSourceOption}_$index"),
+                        ) {
+                            Text(if (selected) "✓  ${source.label}" else source.label)
+                        }
                     }
                 }
             }
@@ -203,8 +363,8 @@ private fun SeriesDetails(
     content: DetailsContent,
     seasonFocus: FocusRequester,
     episodeFocus: FocusRequester,
-    onPlay: (titleId: String, startPositionMs: Long?) -> Unit,
     onSeasonSelected: (Int) -> Unit,
+    onEpisodeClick: (String) -> Unit,
 ) {
     val strings = LocalStrings.current
     LazyColumn(
@@ -224,7 +384,7 @@ private fun SeriesDetails(
                 )
                 Spacer(Modifier.width(36.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    TitleHeader(content, descriptionMaxLines = 3)
+                    TitleHeader(content = content, descriptionMaxLines = 3)
                 }
             }
         }
@@ -300,7 +460,7 @@ private fun SeriesDetails(
                         ) { index, episode ->
                             PosterCard(
                                 title = episode.toTitleSummary(),
-                                onClick = { onPlay(episode.id, null) },
+                                onClick = { onEpisodeClick(episode.id) },
                                 modifier = if (index == 0) {
                                     Modifier.focusRequester(episodeFocus)
                                 } else {
@@ -319,24 +479,35 @@ private fun SeriesDetails(
 private fun TitleHeader(
     content: DetailsContent,
     descriptionMaxLines: Int = 5,
+    onOpenParentShow: (String) -> Unit = {},
 ) {
     val strings = LocalStrings.current
+    val title = content.title
     SloflixLogo(markSize = 22.dp, textSize = 18.sp, showMark = false)
     Spacer(Modifier.height(10.dp))
     Text(
-        text = content.title.name,
+        text = title.displayName,
         style = MaterialTheme.typography.displayLarge,
         color = Color.White,
         maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
+    if (title.kind == MediaKind.Episode) {
+        Spacer(Modifier.height(8.dp))
+        EpisodeParentLine(
+            showName = title.showName,
+            parentId = title.parentId,
+            season = title.season,
+            onOpenParentShow = onOpenParentShow,
+        )
+    }
     Spacer(Modifier.height(12.dp))
     val metadata = buildList {
-        content.title.year?.let { add(it.toString()) }
+        title.year?.let { add(it.toString()) }
         if (content.isSeries) add(strings.seriesLabel)
-        content.title.duration?.let { add(it) }
-        content.title.ratingLabel?.let { add("★ $it") }
-        addAll(content.title.genres)
+        title.duration?.let { add(it) }
+        title.ratingLabel?.let { add("★ $it") }
+        addAll(title.genres)
     }.joinToString("  •  ")
     if (metadata.isNotEmpty()) {
         Text(
@@ -349,7 +520,7 @@ private fun TitleHeader(
         Spacer(Modifier.height(18.dp))
     }
     Text(
-        text = content.title.description,
+        text = title.description,
         style = MaterialTheme.typography.bodyLarge,
         color = Color.White,
         lineHeight = 25.sp,
@@ -357,6 +528,59 @@ private fun TitleHeader(
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier.fillMaxWidth(0.92f),
     )
+}
+
+@Composable
+private fun EpisodeParentLine(
+    showName: String?,
+    parentId: String?,
+    season: Int?,
+    onOpenParentShow: (String) -> Unit,
+) {
+    val strings = LocalStrings.current
+    val seasonLabel = season?.let { "${strings.season} $it" }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        when {
+            !showName.isNullOrBlank() && !parentId.isNullOrBlank() -> {
+                Surface(
+                    onClick = { onOpenParentShow(parentId) },
+                    shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(6.dp)),
+                    colors = ClickableSurfaceDefaults.colors(
+                        containerColor = Color.Transparent,
+                        focusedContainerColor = Color(0xFF2A3344),
+                        pressedContainerColor = Color(0xFF2A3344),
+                    ),
+                    modifier = Modifier.testTag(TestTags.DetailsParentShow),
+                ) {
+                    Text(
+                        text = showName,
+                        color = SecondaryText,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+                if (seasonLabel != null) {
+                    Text(
+                        text = "· $seasonLabel",
+                        color = SecondaryText,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+            }
+            seasonLabel != null -> {
+                Text(
+                    text = "${strings.seriesLabel} · $seasonLabel",
+                    color = SecondaryText,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+    }
 }
 
 @Composable

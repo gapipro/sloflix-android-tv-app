@@ -148,6 +148,9 @@ private class FakePlaybackRepository(
     override suspend fun stream(session: Session, titleId: String): Result<StreamInfo> =
         streamResult
 
+    override suspend fun resolveStreamP2P(embedUrl: String): Result<StreamInfo> =
+        streamResult
+
     override suspend fun saveProgress(
         session: Session,
         progress: PlaybackProgress,

@@ -85,6 +85,64 @@ class StreamSourceResolverTest {
     }
 
     @Test
+    fun `streamP2p embeds are listed for WebView playback`() {
+        val embeds = StreamSourceResolver.webViewEmbeds(
+            listOf(
+                MediaSourceDto(
+                    url = "https://sf.strp2p.com/#abc",
+                    name = "StreamP2P HD",
+                ),
+                source("https://cdn.example.com/file.mp4"),
+                MediaSourceDto(
+                    url = "https://other.example.com/embed",
+                    name = "StreamP2P Mirror",
+                ),
+            ),
+        )
+
+        assertEquals(
+            listOf(
+                com.sloflix.tv.domain.model.WebViewPlaybackSource(
+                    label = "StreamP2P",
+                    url = "https://sf.strp2p.com/#abc",
+                ),
+                com.sloflix.tv.domain.model.WebViewPlaybackSource(
+                    label = "StreamP2P",
+                    url = "https://other.example.com/embed",
+                ),
+            ),
+            embeds,
+        )
+    }
+
+    @Test
+    fun `short source labels prefer DoodStream and StreamP2P`() {
+        assertEquals(
+            "DoodStream",
+            StreamSourceResolver.shortSourceLabel("SLOSubs (DoodStream)", "DoodStream"),
+        )
+        assertEquals(
+            "StreamP2P",
+            StreamSourceResolver.shortSourceLabel("SLOSubs (StreamP2P)", "StreamP2P"),
+        )
+        assertEquals(
+            "DoodStream",
+            StreamSourceResolver.exoSourceLabel(
+                listOf(
+                    MediaSourceDto(
+                        url = "https://player.sloflix.com/?source=https%3A%2F%2Fcdn.example.com%2Ffile",
+                        name = "SLOSubs (DoodStream)",
+                    ),
+                    MediaSourceDto(
+                        url = "https://sf.strp2p.com/#abc",
+                        name = "SLOSubs (StreamP2P)",
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `non source query urls are ignored`() {
         val candidates = StreamSourceResolver.candidates(
             listOf(source("https://player.sloflix.com/?upstream=https%3A%2F%2Fcdn.example.com%2Fa.mp4")),

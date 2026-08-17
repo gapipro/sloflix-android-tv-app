@@ -149,6 +149,9 @@ private class FilterPlaybackRepository : PlaybackRepository {
     override suspend fun stream(session: Session, titleId: String): Result<StreamInfo> =
         error("Not used")
 
+    override suspend fun resolveStreamP2P(embedUrl: String): Result<StreamInfo> =
+        error("Not used")
+
     override suspend fun saveProgress(
         session: Session,
         progress: PlaybackProgress,

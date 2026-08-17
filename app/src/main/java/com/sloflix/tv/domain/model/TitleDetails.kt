@@ -30,13 +30,29 @@ data class TitleDetails(
     val episodeIndex: Int? = null,
     val parentId: String? = null,
     val showName: String? = null,
+    /** True when at least one ExoPlayer-compatible media_source exists. */
+    val hasExoPlayback: Boolean = true,
+    /** Short provider label for ExoPlayer sources, e.g. DoodStream. */
+    val exoSourceLabel: String? = null,
+    /** StreamP2P embeds resolved to HLS via decrypt for ExoPlayer. */
+    val webViewSources: List<WebViewPlaybackSource> = emptyList(),
 ) {
+    /** Series (show) details use the seasons/episodes layout; episodes use movie-like playback UI. */
     val isSeriesUi: Boolean
-        get() = kind == MediaKind.Show || kind == MediaKind.Episode
+        get() = kind == MediaKind.Show
 
     val seriesShowId: String
         get() = when (kind) {
             MediaKind.Episode -> parentId ?: id
             else -> id
+        }
+
+    val displayName: String
+        get() = when (kind) {
+            MediaKind.Episode -> {
+                val index = episodeIndex
+                if (index != null) "$index. $name" else name
+            }
+            else -> name
         }
 }

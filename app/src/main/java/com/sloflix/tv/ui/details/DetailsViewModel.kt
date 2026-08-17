@@ -7,6 +7,7 @@ import com.sloflix.tv.domain.model.MediaKind
 import com.sloflix.tv.domain.model.TitleDetails
 import com.sloflix.tv.domain.repo.CatalogRepository
 import com.sloflix.tv.domain.repo.PlaybackRepository
+import com.sloflix.tv.domain.session.Session
 import com.sloflix.tv.domain.session.SessionStore
 import com.sloflix.tv.ui.components.UiState
 import com.sloflix.tv.ui.components.toUserMessage
@@ -28,7 +29,7 @@ data class DetailsContent(
     val episodesLoading: Boolean = false,
 ) {
     val canResume: Boolean
-        get() = resumePositionMs > 0 && !title.isSeriesUi
+        get() = resumePositionMs > 0 && !isSeries
 
     val isSeries: Boolean
         get() = title.isSeriesUi
@@ -66,7 +67,11 @@ class DetailsViewModel(
         if (ready.value.selectedSeason == season) return
         val showId = ready.value.title.seriesShowId
         mutableUiState.value = UiState.Ready(
-            ready.value.copy(selectedSeason = season, episodes = emptyList(), episodesLoading = true),
+            ready.value.copy(
+                selectedSeason = season,
+                episodes = emptyList(),
+                episodesLoading = true,
+            ),
         )
         loadEpisodes(requestId = ready.value.requestId, showId = showId, season = season)
     }
@@ -79,21 +84,12 @@ class DetailsViewModel(
             try {
                 val session = checkNotNull(sessionStore.get()) { "Your session has expired" }
                 var title = catalogRepository.details(session, titleId).getOrThrow()
-                var highlightSeason: Int? = null
 
                 if (title.kind == MediaKind.Episode) {
-                    highlightSeason = title.season
-                    val parentId = checkNotNull(title.parentId) { "Episode is missing its series" }
-                    val parent = catalogRepository.details(session, parentId).getOrThrow()
-                    title = parent.copy(
-                        kind = MediaKind.Show,
-                        showName = parent.name,
-                        posterUrl = parent.posterUrl ?: title.posterUrl,
-                        backdropUrl = parent.backdropUrl ?: title.backdropUrl,
-                    )
+                    title = enrichEpisodeFromParent(session, title)
                 }
 
-                val resumePosition = if (title.isSeriesUi) {
+                val resumePosition = if (title.kind == MediaKind.Show) {
                     0L
                 } else {
                     title.resumePositionMs
@@ -105,21 +101,17 @@ class DetailsViewModel(
                 }
                 if (this@DetailsViewModel.titleId != titleId) return@launch
 
-                val selectedSeason = when {
-                    highlightSeason != null -> highlightSeason
-                    title.seasons.isNotEmpty() -> title.seasons.first()
-                    else -> null
-                }
+                val selectedSeason = title.seasons.firstOrNull()
                 mutableUiState.value = UiState.Ready(
                     DetailsContent(
                         requestId = titleId,
                         title = title,
                         resumePositionMs = resumePosition.coerceAtLeast(0L),
                         selectedSeason = selectedSeason,
-                        episodesLoading = selectedSeason != null,
+                        episodesLoading = selectedSeason != null && title.kind == MediaKind.Show,
                     ),
                 )
-                if (selectedSeason != null) {
+                if (selectedSeason != null && title.kind == MediaKind.Show) {
                     loadEpisodes(
                         requestId = titleId,
                         showId = title.seriesShowId,
@@ -137,6 +129,27 @@ class DetailsViewModel(
                 }
             }
         }
+    }
+
+    private suspend fun enrichEpisodeFromParent(
+        session: Session,
+        episode: TitleDetails,
+    ): TitleDetails {
+        val parentId = episode.parentId ?: return episode
+        return runCatching {
+            catalogRepository.details(session, parentId).getOrThrow()
+        }.fold(
+            onSuccess = { parent ->
+                episode.copy(
+                    showName = parent.name,
+                    year = episode.year ?: parent.year,
+                    genres = episode.genres.ifEmpty { parent.genres },
+                    backdropUrl = episode.backdropUrl ?: parent.backdropUrl,
+                    posterUrl = episode.posterUrl ?: parent.posterUrl,
+                )
+            },
+            onFailure = { episode },
+        )
     }
 
     private fun loadEpisodes(

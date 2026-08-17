@@ -138,6 +138,45 @@ class CatalogRepositoryImplTest {
     }
 
     @Test
+    fun `details accepts episode payload with null description`() = runTest {
+        server.enqueue(
+            successResponse(
+                """
+                {
+                  "code": 200,
+                  "status": "success",
+                  "data": {
+                    "media_id": 26748,
+                    "media_name": "Epizoda",
+                    "media_description": null,
+                    "media_type": 2,
+                    "media_length": "58:33",
+                    "season": 1,
+                    "episode_index": 1,
+                    "parent_media_id": 26747,
+                    "seasons": [],
+                    "media_genres": [],
+                    "media_sources": [],
+                    "media_rating": {"numerus": 1, "rating": 10},
+                    "metadata": {"watch_time": null}
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val details = repository.details(Session("token"), "26748").getOrThrow()
+
+        assertEquals("26748", details.id)
+        assertEquals("Epizoda", details.name)
+        assertEquals("", details.description)
+        assertEquals("58:33", details.duration)
+        assertEquals(1, details.season)
+        assertEquals(1, details.episodeIndex)
+        assertEquals("26747", details.parentId)
+    }
+
+    @Test
     fun `continue watching keeps only titles watched at least ten minutes`() = runTest {
         continueWatchingStore.upsert(
             ContinueWatchingEntry(

@@ -108,7 +108,7 @@ data class DetailsResponse(
 data class DetailsDto(
     @SerialName("media_id") val id: Int,
     @SerialName("media_name") val name: String,
-    @SerialName("media_description") val description: String = "",
+    @SerialName("media_description") val description: String? = null,
     @SerialName("media_thumbnail_url") val thumbnailUrl: String? = null,
     @SerialName("media_banner_url") val bannerUrl: String? = null,
     @SerialName("media_year") val year: Int? = null,
